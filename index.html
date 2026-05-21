@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retirement Strategy Studio</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-text">
+      <div class="brand-name">Retirement Strategy Studio</div>
+      <div class="brand-sub">Bootstrap MC, 1928 to 2024</div>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <label class="path-select">
+      <span>Paths</span>
+      <select id="pathCount">
+        <option value="2000">2,000</option>
+        <option value="5000">5,000</option>
+        <option value="10000" selected>10,000</option>
+      </select>
+    </label>
+    <button id="runBtn" class="btn-primary">Run Simulation</button>
+  </div>
+</header>
+
+<div class="progress-rail"><div id="progressBar"></div></div>
+
+<main class="layout">
+
+  <aside class="sidebar">
+    <div class="card">
+      <div class="card-h">Client</div>
+      <div class="card-b">
+        <div class="field"><label>Filing status</label>
+          <select id="filing"><option>Single</option></select></div>
+        <div class="field"><label>Risk tolerance</label>
+          <select id="risk">
+            <option>Conservative</option>
+            <option selected>Moderate</option>
+            <option>Aggressive</option>
+          </select></div>
+        <div class="grid2">
+          <div class="field"><label>Current age</label><input id="age_now" type="number" value="44"></div>
+          <div class="field"><label>Retire age</label><input id="age_ret" type="number" value="66"></div>
+        </div>
+        <div class="field"><label>Plan end age</label><input id="age_end" type="number" value="105"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Balances</div>
+      <div class="card-b">
+        <div class="field"><label>Taxable</label><input id="taxable" type="number" value="250000"></div>
+        <div class="field"><label>Traditional</label><input id="traditional" type="number" value="400010"></div>
+        <div class="field"><label>Roth</label><input id="roth" type="number" value="100000"></div>
+        <div class="field"><label>Taxable cost basis</label><input id="cost_basis" type="number" value="200000"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Cash flow</div>
+      <div class="card-b">
+        <div class="field"><label>Annual savings</label><input id="savings" type="number" value="30000"></div>
+        <div class="field"><label>Retirement spending</label><input id="spending" type="number" value="80050"></div>
+        <div class="grid2">
+          <div class="field"><label>SS age</label><input id="ss_age" type="number" value="67"></div>
+          <div class="field"><label>SS amount</label><input id="ss_amt" type="number" value="30000"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Strategy</div>
+      <div class="card-b">
+        <div class="field"><label>Allocation</label>
+          <select id="alloc">
+            <option>60_40</option>
+            <option selected>EqualWeight</option>
+            <option>RiskParity</option>
+            <option>RobustRP</option>
+            <option>GlidePath</option>
+            <option>AgeBalanceAware</option>
+          </select></div>
+        <div class="field"><label>Withdrawal</label>
+          <select id="wd">
+            <option selected>TradFirst</option>
+            <option>RothFirst</option>
+            <option>TaxableFirst</option>
+            <option>Proportional</option>
+            <option>TaxAware</option>
+          </select></div>
+      </div>
+    </div>
+
+    <div class="meta-box" id="metaBox">
+      <div>Paths</div><div><span id="metaPaths">—</span></div>
+      <div>Block</div><div><span id="metaBlock">3y</span></div>
+      <div>Horizon</div><div><span id="metaHorizon">—</span></div>
+      <div>Seed</div><div><span id="metaSeed">42</span></div>
+    </div>
+  </aside>
+
+  <section class="content">
+
+    <div class="hero">
+      <div class="hero-l">
+        <div class="hero-title"><span id="heroAlloc">—</span>, <span id="heroWD">—</span></div>
+        <div class="hero-sub" id="heroNotes">Run a simulation to see results.</div>
+        <div class="hero-recommend" id="heroRecommend"></div>
+      </div>
+      <div class="hero-r">
+        <div class="kpi">
+          <div class="kpi-l">Success probability</div>
+          <div class="kpi-v" id="kpiSuccess">—</div>
+          <div class="kpi-bar"><div id="kpiSuccessBar"></div></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-l">Median terminal real wealth</div>
+          <div class="kpi-v" id="kpiMedian">—</div>
+          <div class="kpi-sub" id="kpiMedianSub">P10 — , P90 —</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-l">Median lifetime tax</div>
+          <div class="kpi-v" id="kpiTax">—</div>
+          <div class="kpi-sub">Real dollars, federal only</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card section">
+      <div class="section-h">
+        <div class="section-title">Strategy matrix</div>
+        <div class="section-controls">
+          <span class="legend-dot ok"></span>≥ 95%
+          <span class="legend-dot warn"></span>90 to 95%
+          <span class="legend-dot bad"></span>&lt; 90%
+        </div>
+      </div>
+      <div id="heatmap" class="heatmap"></div>
+    </div>
+
+    <div class="card section">
+      <div class="section-h">
+        <div class="section-title">Wealth trajectory</div>
+      </div>
+      <div class="chart-wrap"><canvas id="fanChart"></canvas></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card section">
+        <div class="section-h">
+          <div class="section-title">Terminal wealth distribution</div>
+        </div>
+        <div class="chart-wrap"><canvas id="termHist"></canvas></div>
+      </div>
+      <div class="card section">
+        <div class="section-h">
+          <div class="section-title">Allocation</div>
+        </div>
+        <div class="chart-wrap chart-wrap-sm"><canvas id="allocDonut"></canvas></div>
+        <div id="allocLegend" class="alloc-legend"></div>
+      </div>
+    </div>
+
+    <div class="card section">
+      <div class="section-h">
+        <div class="section-title">By allocation, withdrawal held at <span class="ink-pill" id="allocCmpWD">—</span></div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="allocTable">
+          <thead><tr>
+            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card section">
+      <div class="section-h">
+        <div class="section-title">By withdrawal, allocation held at <span class="ink-pill" id="wdCmpAlloc">—</span></div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="wdTable">
+          <thead><tr>
+            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="methodology">
+      <p>Bootstrap of 1928 to 2024 annual returns, sampled in 3-year blocks. Assets: S&amp;P 500 total return, 10-year Treasury, Damodaran real estate, gold. Tax: 2025 federal Single brackets, LTCG stacked, Social Security via provisional income, RMDs after age 73. State tax not modeled. Decision rule ranks by success rate, then P10, then median tax, then median terminal. Bootstrap assumes the future return distribution resembles the historical sample.</p>
+    </div>
+
+  </section>
+</main>
+
+<div id="overlay" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="spinner"></div>
+    <div class="overlay-title" id="overlayTitle">Running</div>
+    <div class="overlay-sub" id="overlaySub">Resampling 10,000 paths</div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
