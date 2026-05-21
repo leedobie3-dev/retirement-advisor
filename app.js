@@ -103,6 +103,7 @@ function readOpts() {
     paths: +$('pathCount').value,
     blockLen: 3,
     seed: 42,
+    model: $('returnModel').value,    // 'bootstrap' or 'markov'
     selAlloc: $('alloc').value,
     selWD: $('wd').value,
   };
@@ -222,9 +223,11 @@ function render(m) {
   $('kpiTax').textContent = fmtMoney(combo.median_tax);
 
   // Meta
+  $('metaModel').textContent = m.meta.model === 'markov' ? 'Markov 2-state' : 'Block Bootstrap';
   $('metaPaths').textContent = m.meta.nPaths.toLocaleString();
   $('metaHorizon').textContent = `${m.meta.nYears}y`;
   $('metaSeed').textContent = m.meta.seed;
+  $('metaBlock').textContent = m.meta.model === 'markov' ? 'regime-based' : '3y';
 
   // Heatmap
   renderHeatmap(m.combos, opts, top.key);
@@ -526,7 +529,7 @@ $('runBtn').onclick = runSim;
 
 // Mark the Run button as "dirty" when client-profile inputs change, so the user
 // knows their edits haven't been applied yet. The run only fires on click.
-const reSimInputs = ['filing','risk','age_now','age_ret','age_end','taxable','traditional','roth','cost_basis','savings','spending','ss_age','ss_amt','pathCount'];
+const reSimInputs = ['filing','risk','age_now','age_ret','age_end','taxable','traditional','roth','cost_basis','savings','spending','ss_age','ss_amt','pathCount','returnModel'];
 function markDirty() {
   const btn = $('runBtn');
   btn.classList.add('dirty');

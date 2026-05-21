@@ -41,7 +41,8 @@
 
 import {
   HIST, TAX_SINGLE, RMD_FACTORS, RMD_AGE,
-  STATIC_WEIGHTS, RISK_MULT, ALLOCATIONS, WITHDRAWALS
+  STATIC_WEIGHTS, RISK_MULT, ALLOCATIONS, WITHDRAWALS,
+  REGIME_LABELS, REGIME_P, REGIME_STATIONARY, REGIME_BY_INDEX
 } from './data.js';
 
 // ---------------------------------------------------------------------------
@@ -61,11 +62,17 @@ import {
 // values — stock return, bond return, real-estate return, commodity return,
 // inflation rate — which the year-by-year simulator reads later.
 // ---------------------------------------------------------------------------
+// Small deterministic RNG so reruns with the same seed give identical paths.
+// (Linear congruential generator; not for cryptography, fine for MC.)
+function makeRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+}
+
 function bootstrapReturns(nPaths, nYears, blockLen, seed) {
   const H = HIST.length;  // 97 historical years available to sample from
   const out = new Float64Array(nPaths * nYears * 5);
-  let s = seed >>> 0 || 1;
-  const rand = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+  const rand = makeRng(seed);
   for (let p = 0; p < nPaths; p++) {
     let y = 0;
     while (y < nYears) {
@@ -81,6 +88,58 @@ function bootstrapReturns(nPaths, nYears, blockLen, seed) {
         out[i+4] = h.cpi;
       }
       y = end;
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// markovReturns()  —  regime-switching block bootstrap (alternate sampler)
+//
+// Excel equivalent: none. This is a new approach.
+//
+// Procedure for each Monte Carlo path:
+//   1. Draw a starting regime from the stationary distribution (35% calm,
+//      65% stressed) — this represents "we don't know what regime today
+//      really is, so use the long-run average."
+//   2. For each simulation year:
+//        a. Pick a random historical year that has the CURRENT regime label.
+//        b. Copy that year's actual asset returns (stocks, bonds, RE, comm,
+//           CPI) into the output. We sample real history, so empirical fat
+//           tails are preserved automatically — no Gaussian assumption.
+//        c. Roll the dice on the transition matrix REGIME_P to decide the
+//           NEXT regime. Calm tends to flip to stressed; stressed tends to
+//           persist (expected duration ~2.5 years).
+//
+// vs. plain bootstrap: blocks of similar-volatility years cluster together
+// because the regime transitions are sticky. Crash years are more likely
+// to be neighbored by other crash years than under IID block resampling.
+// ---------------------------------------------------------------------------
+function markovReturns(nPaths, nYears, seed) {
+  const out = new Float64Array(nPaths * nYears * 5);
+  const rand = makeRng(seed + 9001);  // different seed offset from bootstrap
+  const calmIdx = REGIME_BY_INDEX[0];
+  const stressIdx = REGIME_BY_INDEX[1];
+  const nCalm = calmIdx.length, nStress = stressIdx.length;
+
+  for (let p = 0; p < nPaths; p++) {
+    // Initial regime drawn from stationary distribution
+    let regime = rand() < REGIME_STATIONARY[0] ? 0 : 1;
+    for (let y = 0; y < nYears; y++) {
+      // Pick a random historical year from the current regime
+      const histIdx = regime === 0
+        ? calmIdx[Math.floor(rand() * nCalm)]
+        : stressIdx[Math.floor(rand() * nStress)];
+      const h = HIST[histIdx];
+      const i = (p * nYears + y) * 5;
+      out[i]   = h.stk;
+      out[i+1] = h.bnd;
+      out[i+2] = h.re;
+      out[i+3] = h.com;
+      out[i+4] = h.cpi;
+      // Transition to next regime
+      const pNext = REGIME_P[regime][0];
+      regime = rand() < pNext ? 0 : 1;
     }
   }
   return out;
@@ -403,10 +462,14 @@ function runMC(inp, opts) {
   const nPaths = opts.paths || 10000;
   const blockLen = opts.blockLen || 3;
   const seed = opts.seed || 42;
+  const model = opts.model || 'bootstrap';   // 'bootstrap' or 'markov'
   const nYears = inp.age_end - inp.age_now + 1;
 
   postMessage({ type: 'progress', stage: 'resampling', pct: 5 });
-  const returns = bootstrapReturns(nPaths, nYears, blockLen, seed);
+  // Choose the return-generation model based on the user's toggle.
+  const returns = model === 'markov'
+    ? markovReturns(nPaths, nYears, seed)
+    : bootstrapReturns(nPaths, nYears, blockLen, seed);
 
   const combos = {};
   const fanData = {};   // per combo: year-by-year totals array (for selected combo, kept high-res)
@@ -489,7 +552,7 @@ function runMC(inp, opts) {
   }
 
   postMessage({ type: 'progress', stage: 'finalizing', pct: 95 });
-  postMessage({ type: 'result', combos, fanData, meta: { nPaths, nYears, blockLen, seed } });
+  postMessage({ type: 'result', combos, fanData, meta: { nPaths, nYears, blockLen, seed, model } });
 }
 
 // ---------------------------------------------------------------------------

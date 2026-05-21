@@ -34,6 +34,13 @@
   </div>
   <div class="topbar-actions">
     <label class="path-select">
+      <span>Return model</span>
+      <select id="returnModel">
+        <option value="bootstrap" selected>Block Bootstrap</option>
+        <option value="markov">Markov 2-state</option>
+      </select>
+    </label>
+    <label class="path-select">
       <span>Paths</span>
       <select id="pathCount">
         <option value="2000">2,000</option>
@@ -115,6 +122,7 @@
     </div>
 
     <div class="meta-box" id="metaBox">
+      <div>Model</div><div><span id="metaModel">—</span></div>
       <div>Paths</div><div><span id="metaPaths">—</span></div>
       <div>Block</div><div><span id="metaBlock">3y</span></div>
       <div>Horizon</div><div><span id="metaHorizon">—</span></div>
@@ -224,8 +232,19 @@
       </div>
 
       <div class="meth-section">
-        <div class="meth-label">Bootstrap resampling</div>
-        <p>Rather than fitting a parametric return distribution, we resample observed history. Each path is built by drawing random 3-year contiguous blocks from the historical sample and concatenating them until we have one return year per simulation year. Blocks preserve short-horizon serial correlation that IID resampling destroys (1930-1932 stays a unit, 2000-2002 stays a unit, and so on). With 10,000 paths and a 60-plus year horizon, percentile estimates at P10 and P90 are stable to within roughly a percentage point across reruns with different seeds. The seed is fixed at 42 so results are reproducible.</p>
+        <div class="meth-label">Return models, in brief</div>
+        <p>Two sampling models are available via the "Return model" dropdown. Both resample from the same 1928 to 2024 historical record, so both inherit empirical fat tails. They differ in how they chain years together.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Block Bootstrap (default)</div>
+        <p>Each Monte Carlo path is built by drawing random 3-year contiguous blocks from history and concatenating them until we have one return year per simulation year. Blocks preserve short-horizon serial correlation that pure IID resampling destroys: 1930 to 1932 stays a unit, 2000 to 2002 stays a unit, and so on. Block draws themselves are independent, so a Depression block can be followed by a 1990s block. This is the academic default for retirement Monte Carlo (Pfau, Bengen). With 10,000 paths and a 60-plus year horizon, P10 and P90 estimates are stable to within roughly a percentage point across reruns with different seeds.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Markov 2-state (regime-switching block bootstrap)</div>
+        <p>A two-state hidden Markov model is fit offline to the annual stock-return series using Baum-Welch EM. The model identifies two latent regimes that we label "calm" (37 years, low volatility 10.9%, high mean +26%) and "stressed" (60 years, high volatility 18.4%, near-zero mean). Every well-known crash year falls into the stressed regime (1929 to 1932, 1937, 1973 to 1974, 2000 to 2002, 2008, 2022). The fitted transition matrix has P(stressed remains stressed) = 0.60 and P(calm flips to stressed) = 0.73, with an expected stressed-regime duration of 2.5 years.</p>
+        <p>At sampling time, each path begins by drawing a regime from the long-run stationary distribution (35% calm, 65% stressed). Each subsequent year transitions according to the fitted matrix, and a historical year tagged with that regime is bootstrapped to provide the actual asset returns. The result preserves regime persistence (bad years cluster together) AND empirical fat tails (we sample real historical bundles, not Gaussian draws). Success rates and P10 figures under the Markov model are typically 1 to 3 percentage points worse than under plain block bootstrap, because regime persistence increases sequence risk. The gap is the model's estimate of how much sequence risk plain bootstrap is missing.</p>
       </div>
 
       <div class="meth-section">
