@@ -99,8 +99,8 @@ function bootstrapReturns(nPaths, nYears, blockLen, seed) {
 // Excel equivalent: none. This is a new approach.
 //
 // Procedure for each Monte Carlo path:
-//   1. Draw a starting regime from the stationary distribution (35% calm,
-//      65% stressed) — this represents "we don't know what regime today
+//   1. Draw a starting regime from the stationary distribution (35% steady,
+//      65% volatile) — this represents "we don't know what regime today
 //      really is, so use the long-run average."
 //   2. For each simulation year:
 //        a. Pick a random historical year that has the CURRENT regime label.
@@ -108,19 +108,21 @@ function bootstrapReturns(nPaths, nYears, blockLen, seed) {
 //           CPI) into the output. We sample real history, so empirical fat
 //           tails are preserved automatically — no Gaussian assumption.
 //        c. Roll the dice on the transition matrix REGIME_P to decide the
-//           NEXT regime. Calm tends to flip to stressed; stressed tends to
-//           persist (expected duration ~2.5 years).
+//           NEXT regime. Steady tends to flip to volatile; volatile tends
+//           to persist (expected duration ~2.5 years).
 //
 // vs. plain bootstrap: blocks of similar-volatility years cluster together
 // because the regime transitions are sticky. Crash years are more likely
-// to be neighbored by other crash years than under IID block resampling.
+// to be neighbored by other volatile years than under IID block resampling.
+// (Note: these are volatility regimes, not bull/bear in the market-narrative
+// sense. The volatile regime contains all crashes AND choppy positive years.)
 // ---------------------------------------------------------------------------
 function markovReturns(nPaths, nYears, seed) {
   const out = new Float64Array(nPaths * nYears * 5);
   const rand = makeRng(seed + 9001);  // different seed offset from bootstrap
-  const calmIdx = REGIME_BY_INDEX[0];
-  const stressIdx = REGIME_BY_INDEX[1];
-  const nCalm = calmIdx.length, nStress = stressIdx.length;
+  const steadyIdx = REGIME_BY_INDEX[0];
+  const volatileIdx = REGIME_BY_INDEX[1];
+  const nSteady = steadyIdx.length, nVolatile = volatileIdx.length;
 
   for (let p = 0; p < nPaths; p++) {
     // Initial regime drawn from stationary distribution
@@ -128,8 +130,8 @@ function markovReturns(nPaths, nYears, seed) {
     for (let y = 0; y < nYears; y++) {
       // Pick a random historical year from the current regime
       const histIdx = regime === 0
-        ? calmIdx[Math.floor(rand() * nCalm)]
-        : stressIdx[Math.floor(rand() * nStress)];
+        ? steadyIdx[Math.floor(rand() * nSteady)]
+        : volatileIdx[Math.floor(rand() * nVolatile)];
       const h = HIST[histIdx];
       const i = (p * nYears + y) * 5;
       out[i]   = h.stk;

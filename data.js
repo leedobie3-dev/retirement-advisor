@@ -237,24 +237,34 @@ export const RISK_MULT = { Conservative: 0.8, Moderate: 1.0, Aggressive: 1.2 };
 // stock-return observations above. See /tmp/regime_fit.json or the methodology
 // section for the fitting procedure.)
 //
-// Two regimes:
-//   Regime 0 ("CALM"):     low vol, high positive mean.   37 years total.
-//   Regime 1 ("STRESSED"): high vol, near-zero mean.      60 years total.
+// Two regimes (named for what they statistically ARE, not for market narrative):
+//   Regime 0 ("STEADY"):   low vol, high positive mean.   37 years total.
+//   Regime 1 ("VOLATILE"): high vol, near-zero mean.      60 years total.
 //
-// The fitted model classifies every well-known crash year (1929-1932, 1937,
-// 1973-1974, 2000-2002, 2008, 2022) into the stressed regime. The calm
-// regime contains unambiguous boom years (1933, 1935, 1954, 1958, 1975,
-// 1980, 1985, 1995-1999, 2003, 2013, 2017, 2019, 2021, 2023, 2024).
+// NOTE: these are NOT "bull" and "bear" regimes. Annual data does not give
+// EM enough signal to separate "modest positive" years from "outright
+// negative" years, so the volatile bucket contains ALL crash years PLUS
+// modest-positive choppy years (e.g., 2010 +15% with a flash crash, 2015
+// +1% sideways, 2018 -4%). The steady bucket holds the unambiguous boom
+// years — high return AND low realized volatility. Of the 97 historical
+// years, ~74% had positive stock returns, but only 37 of those fit the
+// tight steady distribution; the rest land in volatile.
+//
+// What matters for sequence risk: every well-known crash year (1929-1932,
+// 1937, 1973-1974, 2000-2002, 2008, 2022) is in the volatile regime, and
+// the volatile regime persists for ~2.5 years on average. So the sampler
+// clusters bad-and-noisy years together — which is exactly the property
+// IID block bootstrap misses.
 //
 // Used by the Markov-2-state sampler in engine.js: at each simulation year,
 // the next regime is drawn from REGIME_P, then a historical year tagged with
 // that regime is bootstrapped from HIST. This preserves regime persistence
-// (stressed years cluster ~2.5 years on average) AND empirical fat tails
-// (we sample actual historical bundles, not draws from a Gaussian).
+// AND empirical fat tails (we sample actual historical bundles, not draws
+// from a Gaussian).
 // ============================================================================
 
 // REGIME_LABELS[i] is the regime for HIST[i] (so labels[0] is for 1928,
-// labels[96] is for 2024). 0 = calm, 1 = stressed.
+// labels[96] is for 2024). 0 = steady, 1 = volatile.
 export const REGIME_LABELS = [
   0,1,1,1,1,0,1,0,0,1,0,1,1,1,0,0,1,0,1,1,1,1,0,0,1,1,0,0,1,1,
   0,1,1,0,1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,1,1,1,0,1,0,0,1,0,1,1,
@@ -264,11 +274,11 @@ export const REGIME_LABELS = [
 
 // REGIME_P[i][j] = P(next regime is j | current regime is i).
 // Estimated from the fitted HMM transition matrix.
-//   P(calm     -> calm)     = 0.266    P(calm     -> stressed) = 0.734
-//   P(stressed -> calm)     = 0.399    P(stressed -> stressed) = 0.601
-// Expected duration in calm     = 1.4 years
-// Expected duration in stressed = 2.5 years
-// Stationary distribution: 35% calm, 65% stressed.
+//   P(steady   -> steady)   = 0.266    P(steady   -> volatile) = 0.734
+//   P(volatile -> steady)   = 0.399    P(volatile -> volatile) = 0.601
+// Expected duration in steady   = 1.4 years
+// Expected duration in volatile = 2.5 years
+// Stationary distribution: 35% steady, 65% volatile.
 export const REGIME_P = [
   [0.266, 0.734],
   [0.399, 0.601],
@@ -279,11 +289,11 @@ export const REGIME_P = [
 export const REGIME_STATIONARY = [0.352, 0.648];
 
 // REGIME_BY_INDEX: pre-built index of which HIST positions belong to each
-// regime, so the sampler can pick "a random calm year" in O(1).
+// regime, so the sampler can pick "a random steady year" in O(1).
 export const REGIME_BY_INDEX = [
-  REGIME_LABELS.map((r, i) => r === 0 ? i : -1).filter(i => i >= 0),  // calm
-  REGIME_LABELS.map((r, i) => r === 1 ? i : -1).filter(i => i >= 0),  // stressed
+  REGIME_LABELS.map((r, i) => r === 0 ? i : -1).filter(i => i >= 0),  // steady
+  REGIME_LABELS.map((r, i) => r === 1 ? i : -1).filter(i => i >= 0),  // volatile
 ];
 
 // Names for display purposes.
-export const REGIME_NAMES = ['Calm', 'Stressed'];
+export const REGIME_NAMES = ['Steady', 'Volatile'];
