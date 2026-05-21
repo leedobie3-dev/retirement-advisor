@@ -185,7 +185,6 @@ function render(m) {
   // Tables
   renderAllocTable(m.combos, opts, top.key);
   renderWDTable(m.combos, opts, top.key);
-  $('termPaths').textContent = m.meta.nPaths.toLocaleString();
 }
 
 function renderHeatmap(combos, opts, topKey) {
