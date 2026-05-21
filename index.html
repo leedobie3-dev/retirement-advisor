@@ -175,7 +175,7 @@
       <div class="table-scroll">
         <table class="data-table" id="allocTable">
           <thead><tr>
-            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th></th>
+            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th>Median, scaled to best</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -189,7 +189,7 @@
       <div class="table-scroll">
         <table class="data-table" id="wdTable">
           <thead><tr>
-            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th></th>
+            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th>Median, scaled to best</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -197,7 +197,45 @@
     </div>
 
     <div class="methodology">
-      <p>Bootstrap of 1928 to 2024 annual returns, sampled in 3-year blocks. Assets: S&amp;P 500 total return, 10-year Treasury, Damodaran real estate, gold. Tax: 2025 federal Single brackets, LTCG stacked, Social Security via provisional income, RMDs after age 73. State tax not modeled. Decision rule ranks by success rate, then P10, then median tax, then median terminal. Bootstrap assumes the future return distribution resembles the historical sample.</p>
+      <div class="meth-section">
+        <div class="meth-label">What we are computing</div>
+        <p>Every run sweeps all 30 combinations of six allocation strategies and five withdrawal strategies, simulating each combination on the same set of Monte Carlo paths. Each path is a full retirement plan, year by year, from the client's current age to plan end. For every path we track three account types (taxable, traditional, Roth), apply contributions during accumulation, apply withdrawals and Social Security during retirement, compute federal tax, and record the ending wealth in real (inflation-adjusted) dollars. The summary numbers in the dashboard are percentiles across paths.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Where the data comes from</div>
+        <p>Annual asset returns, 1928 to 2024 (97 years), from Aswath Damodaran's <span class="ink-pill">histretSP.xls</span> (NYU Stern, January 2026 update). Stocks are S&amp;P 500 total return including dividends. Bonds are 10-year US Treasury total return. Real estate uses Damodaran's REIT series. Commodities use gold as a proxy, since GSCI data does not extend pre-1970. Inflation is CPI-U. Federal tax brackets, standard deductions, LTCG thresholds, Social Security provisional-income thresholds, and the Uniform Lifetime Table RMD divisors are 2025 IRS figures, Single filer.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Bootstrap resampling</div>
+        <p>Rather than fitting a parametric return distribution, we resample observed history. Each path is built by drawing random 3-year contiguous blocks from the historical sample and concatenating them until we have one return year per simulation year. Blocks preserve short-horizon serial correlation that IID resampling destroys (1930-1932 stays a unit, 2000-2002 stays a unit, and so on). With 10,000 paths and a 60-plus year horizon, percentile estimates at P10 and P90 are stable to within roughly a percentage point across reruns with different seeds. The seed is fixed at 42 so results are reproducible.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Allocation strategies</div>
+        <p>60/40 is the static benchmark, ignoring real estate and commodities. Equal Weight holds 25% in each of stocks, bonds, real estate, and commodities. Risk Parity uses inverse-volatility weights (stocks 18%, bonds 55%, real estate 15%, commodities 12%). Robust Risk Parity adjusts those weights for cross-asset correlations, mainly trimming the stocks-plus-real-estate cluster. Glide Path holds equity equal to max(20%, 110 minus age) percent, scaled by a risk-tolerance multiplier (0.8 / 1.0 / 1.2 for Conservative / Moderate / Aggressive), with the remainder in bonds. Age-Balance Aware uses the same age-based glide but reduces equity further when the spending-to-balance burden is high, and diversifies the equity sleeve across stocks (65%), real estate (20%), and commodities (15%).</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Withdrawal strategies</div>
+        <p>Traditional First drains tax-deferred accounts first, then taxable, then Roth, maximizing deferred-tax growth in the Roth but bunching ordinary income early. Roth First reverses that order. Taxable First is the conventional rule of thumb. Proportional draws pro-rata across all three account types each year. Tax-Aware fills the ordinary income brackets up to the top of the 12% bracket from traditional withdrawals, then takes long-term capital gains from taxable, then more traditional if needed, with Roth as the final reserve. Required Minimum Distributions are enforced after age 73 regardless of strategy.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Tax model</div>
+        <p>Ordinary income uses 2025 federal Single brackets (10/12/22/24/32/35/37). Long-term capital gains stack on top of ordinary taxable income and are taxed at 0/15/20 according to where the gains fall in the LTCG bracket schedule. Social Security taxation uses provisional income (other taxable income plus half of SS benefits) against the 25,000 and 34,000 thresholds, taxing up to 50% then up to 85% of benefits. Standard deduction is 15,000 with a 2,000 age-65 add-on. Cost basis in the taxable account is tracked dynamically: each withdrawal consumes basis proportionally, and pre-retirement contributions add basis dollar-for-dollar. State income tax is not modeled.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Decision rule</div>
+        <p>The "top-ranked" tag in the heatmap and tables applies a four-level priority. First, success rate at or above 95%. Among combinations that clear that bar, higher P10 (10th-percentile terminal wealth) wins, because the goal is protection against bad-sequence outcomes. As a tie-breaker, lower median lifetime tax. As a final tie-breaker, higher median terminal wealth. The order is deliberate: a portfolio that depletes is a catastrophic failure, while one that finishes with less but never runs out is acceptable. Upside is the last consideration.</p>
+      </div>
+
+      <div class="meth-section">
+        <div class="meth-label">Caveats</div>
+        <p>Bootstrap from 1928 to 2024 assumes the future return distribution resembles the historical sample. That is a strong assumption: it embeds the realized US equity premium and bond returns from the post-war era and a particular path of inflation. Real-estate and commodity proxies introduce additional uncertainty. The tax model is a simplification of a complex code and ignores state, AMT, IRMAA, NIIT, and many edge cases. This is decision support, not personalized advice. Use the dashboard to compare strategies and surface tradeoffs; advisor judgment is still required for client-specific factors such as longevity expectation, healthcare reserves, legacy goals, and behavioral risk tolerance.</p>
+      </div>
     </div>
 
   </section>
