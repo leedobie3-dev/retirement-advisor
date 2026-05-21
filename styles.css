@@ -1,4 +1,15 @@
-/* Retirement Strategy Studio — single typeface, one accent, sparse layout. */
+/* ============================================================================
+   styles.css — visual styling only. No logic, no data.
+
+   This file controls how the page LOOKS. It does not change what the page
+   does. If you removed this file, the dashboard would still work; it would
+   just be unstyled black-and-white text and default browser controls.
+
+   The variables at the top (--bg, --ink, etc.) are color names used
+   throughout the rest of the file, so you can change every appearance in
+   one place. There is no Excel equivalent for this file.
+   ============================================================================ */
+/* Single typeface (system font), one accent (terracotta), sparse layout. */
 :root {
   --bg: #fafaf7;
   --paper: #ffffff;

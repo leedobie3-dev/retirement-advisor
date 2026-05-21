@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+  index.html — the page structure. This is just markup (no logic).
+
+  The sections below mirror the layout of the Excel "Dashboard" sheet:
+    - left sidebar  ↔  Excel "Inputs" tab (client profile, balances, etc.)
+    - hero          ↔  Dashboard B19:E21 (selected strategy KPIs)
+    - heatmap       ↔  "MonteCarlo" sheet B8:F13 (success-rate grid)
+    - alloc table   ↔  Dashboard A25:G30
+    - wd table      ↔  Dashboard A34:G38
+    - methodology   ↔  "read me" sheet (text content)
+
+  Three external resources are loaded:
+    - Google's CDN Chart.js library for the fan chart, histogram, and donut
+    - styles.css     (visual styling)
+    - app.js         (which itself loads engine.js as a Web Worker)
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">

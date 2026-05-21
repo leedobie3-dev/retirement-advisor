@@ -1,16 +1,68 @@
-// Web Worker: vectorized bootstrap Monte Carlo for retirement strategies.
-// Loaded as a module worker. Exposes one message handler that takes client inputs
-// and returns per-combo distributions + per-year fan for the selected combo.
+// ============================================================================
+// engine.js — The Monte Carlo simulator. This is the math.
+//
+// Plain-English overview, for non-coders:
+//
+//   The page asks this file: "given a client's age, balances, spending, etc.,
+//   how does each of the 30 strategy combinations (6 allocations × 5
+//   withdrawal sequences) perform over thousands of possible market futures?"
+//
+//   This file answers by:
+//     1. Manufacturing thousands of "possible futures" of market returns by
+//        randomly stitching together 3-year blocks pulled from the actual
+//        1928-2024 history. Each future is one Monte Carlo path.
+//     2. For each (allocation, withdrawal) pair, walking every path year by
+//        year: applying contributions before retirement, then withdrawals,
+//        Social Security, federal tax, RMDs, and portfolio growth.
+//     3. Recording the ending wealth and total lifetime tax for every path,
+//        then reporting percentiles (P10 = bad outcome, P50 = typical, etc.)
+//        and the success rate (% of paths where the client never runs out).
+//
+// This file runs in a "Web Worker" — a separate thread the browser uses for
+// heavy computation so the page stays responsive while the simulation runs.
+//
+// Mapping to the Excel workbook:
+//
+//   bootstrapReturns()  ↔  Excel sheet "MCRaw" (the bootstrap engine)
+//   weightsFor()        ↔  Excel sheet "Strategies" formulas, including the
+//                          age-based logic for GlidePath / AgeBalanceAware
+//   ordinaryTax()       ↔  tax bracket math used in MCSim_* sheets
+//   ltcgTax()           ↔  LTCG-stacking logic used in MCSim_* sheets
+//   ssTaxablePortion()  ↔  provisional-income SS taxation logic
+//   withdraw()          ↔  the W_Trad / W_Tax / W_Roth columns in each
+//                          MCSim_<Alloc> sheet (one set of columns per
+//                          withdrawal strategy)
+//   simulatePath()      ↔  one row of one MCSim_<Alloc> sheet expanded
+//                          across 60 years, equivalent to a single row in
+//                          the "Engine" tab's A10:AB59 historical walk
+//   runMC()             ↔  the loop that produces "MCResults" (per-combo
+//                          terminal real wealth + lifetime tax distributions)
+// ============================================================================
 
 import {
   HIST, TAX_SINGLE, RMD_FACTORS, RMD_AGE,
   STATIC_WEIGHTS, RISK_MULT, ALLOCATIONS, WITHDRAWALS
 } from './data.js';
 
-// ---------- Bootstrap block resampler ----------
+// ---------------------------------------------------------------------------
+// bootstrapReturns()  —  builds the "possible futures"
+//
+// Excel equivalent: the entire MCRaw sheet (12,000 rows = 200 paths × 60 yrs).
+//
+// What it does, in plain English:
+//   - Picks random starting years from the historical record (1928-2024).
+//   - For each pick, copies 3 years in a row from history into the synthetic
+//     future. This preserves things like crash sequences (1930, 1931, 1932
+//     stay together) instead of mixing them randomly.
+//   - Repeats until each path has enough years to cover the full retirement.
+//   - Does this for every Monte Carlo path (default 10,000).
+//
+// The output is one big array of numbers: for each (path, year) we store five
+// values — stock return, bond return, real-estate return, commodity return,
+// inflation rate — which the year-by-year simulator reads later.
+// ---------------------------------------------------------------------------
 function bootstrapReturns(nPaths, nYears, blockLen, seed) {
-  // Returns Float64Array length nPaths*nYears*5: [stk, bnd, re, com, cpi]
-  const H = HIST.length;
+  const H = HIST.length;  // 97 historical years available to sample from
   const out = new Float64Array(nPaths * nYears * 5);
   let s = seed >>> 0 || 1;
   const rand = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
@@ -34,10 +86,28 @@ function bootstrapReturns(nPaths, nYears, blockLen, seed) {
   return out;
 }
 
-// ---------- Allocation weights ----------
+// ---------------------------------------------------------------------------
+// weightsFor()  —  decides how the portfolio is split across asset classes
+//
+// Excel equivalent: the "Strategies" sheet (A4:E10 for the static weights,
+// plus the embedded glide-path and age-balance-aware formulas in MCSim_*).
+//
+// Each strategy returns four numbers that sum to 1:
+//     [stocks fraction, bonds fraction, real-estate fraction, commodities fraction]
+//
+// The four "static" strategies (60/40, EqualWeight, RiskParity, RobustRP)
+// always return the same fixed weights from data.js.
+//
+// The two "dynamic" strategies recompute weights every year of the simulation:
+//   GlidePath        — equity glides down as the client ages
+//                      (110 - age) / 100, scaled by risk multiplier
+//   AgeBalanceAware  — same glide, but cuts equity further when the client's
+//                      spending need is large relative to their balance, and
+//                      diversifies the equity sleeve into RE and commodities
+// ---------------------------------------------------------------------------
 function weightsFor(strategy, age, totalBal, spendNeed, riskMult) {
   const W = STATIC_WEIGHTS[strategy];
-  if (W) return W;
+  if (W) return W;  // 60/40, EqualWeight, RiskParity, RobustRP — fixed weights
   if (strategy === 'GlidePath') {
     let eq = Math.max(0.20, Math.min(0.95, ((110 - age) / 100) * riskMult));
     return [eq, 1 - eq, 0, 0];
@@ -54,7 +124,25 @@ function weightsFor(strategy, age, totalBal, spendNeed, riskMult) {
   return [0.6, 0.4, 0, 0];
 }
 
-// ---------- Tax helpers ----------
+// ---------------------------------------------------------------------------
+// Tax helpers  —  three small functions that together compute federal tax
+//
+// Excel equivalent: the tax columns embedded in every MCSim_<Alloc> sheet,
+// using the bracket numbers from the TaxTables sheet.
+//
+//   ordinaryTax()      — applies the progressive bracket schedule
+//                        (10/12/22/24/32/35/37) to a single income figure.
+//
+//   ltcgTax()          — long-term capital gains stack ON TOP OF ordinary
+//                        taxable income and are taxed at 0/15/20. Where the
+//                        gains land in the LTCG bracket schedule depends on
+//                        how much ordinary income sits beneath them.
+//
+//   ssTaxablePortion() — Social Security benefits are taxed only above
+//                        "provisional income" thresholds: up to 50% of
+//                        benefits become taxable above $25k provisional,
+//                        up to 85% above $34k.
+// ---------------------------------------------------------------------------
 function ordinaryTax(taxableIncome) {
   let ti = Math.max(0, taxableIncome);
   let tax = 0;
@@ -99,8 +187,23 @@ function ssTaxablePortion(ssIncome, otherOrdIncome) {
   return Math.min(0.85 * ssIncome, tier1 + tier2);
 }
 
-// ---------- Withdrawal logic ----------
-// Returns [wTrad, wTax, wRoth, basisConsumed]. Withdrawals taken from BoY balances.
+// ---------------------------------------------------------------------------
+// withdraw()  —  decides which accounts to pull from to fund spending
+//
+// Excel equivalent: the "W_Trad" / "W_Tax" / "W_Roth" columns of each
+// MCSim_<Alloc> sheet. Each sheet has these columns repeated five times,
+// once per withdrawal strategy (TradFirst, RothFirst, TaxableFirst,
+// Proportional, TaxAware).
+//
+// Given:    a spending need in dollars, and the client's three account
+//           balances at the start of the year (traditional, taxable, Roth),
+// Returns:  how much to pull from each account this year, plus the cost
+//           basis consumed from taxable (which the tax calc needs later).
+//
+// Required Minimum Distributions are enforced at the end: if the client is
+// 73+ with money still in a traditional account, we force the traditional
+// withdrawal up to the IRS minimum regardless of strategy.
+// ---------------------------------------------------------------------------
 function withdraw(strategy, need, trad, tax, taxBasis, roth, age) {
   let wT = 0, wX = 0, wR = 0;
   let remaining = need;
@@ -155,7 +258,29 @@ function withdraw(strategy, need, trad, tax, taxBasis, roth, age) {
   return [wT, wX, wR, basisConsumed];
 }
 
-// ---------- Single-path simulator ----------
+// ---------------------------------------------------------------------------
+// simulatePath()  —  walks one client through one possible future, year by year
+//
+// Excel equivalent: one row of an MCSim_<Alloc> sheet "exploded" across the
+// 60-year horizon. It is also exactly what the "Engine" sheet (A10:AB59)
+// does for a single historical sequence, except we use a bootstrap-drawn
+// sequence instead of an actual history.
+//
+// For each year of the client's plan:
+//
+//   1. Read the four asset returns and inflation rate for that year (already
+//      generated by bootstrapReturns).
+//   2. Determine the portfolio weights (allocation) for this age and balance.
+//   3. If still working: add the annual savings to the taxable account.
+//      If retired: turn on Social Security at ss_age, work out the spending
+//      need in nominal dollars (inflated by CPI), pull from accounts via the
+//      withdraw() function, compute tax, and pay it.
+//   4. Grow the remaining balances by the portfolio return for the year.
+//   5. Flag the path as "depleted" if all three accounts hit zero.
+//
+// The function returns the ending real (inflation-adjusted) wealth and the
+// cumulative real tax paid across the whole retirement.
+// ---------------------------------------------------------------------------
 function simulatePath(inp, allocStrat, wdStrat, returns, pIdx, nYears, recordYearly) {
   let trad = inp.traditional;
   let tax  = inp.taxable;
@@ -246,7 +371,8 @@ function simulatePath(inp, allocStrat, wdStrat, returns, pIdx, nYears, recordYea
   return { termReal, lifeTaxReal, depleted, yearly };
 }
 
-// ---------- Percentile helper ----------
+// pct() — pulls the Pth percentile out of a sorted list of numbers.
+// Example: pct(sorted, 10) returns the 10th-percentile value.
 function pct(sortedArr, p) {
   const n = sortedArr.length;
   if (!n) return 0;
@@ -255,7 +381,24 @@ function pct(sortedArr, p) {
   return sortedArr[f] + (sortedArr[c] - sortedArr[f]) * (k - f);
 }
 
-// ---------- Main runner ----------
+// ---------------------------------------------------------------------------
+// runMC()  —  the top-level orchestrator
+//
+// Excel equivalent: this is what produces the "MCResults" sheet (one row per
+// path, columns for every alloc × withdrawal combination's terminal real
+// wealth and lifetime tax) and the summary pivot on the "MonteCarlo" sheet.
+//
+// Procedure:
+//   1. Build the bootstrap returns once. Every strategy sees the SAME random
+//      futures, which makes the comparison apples-to-apples.
+//   2. For each of the 30 (allocation, withdrawal) pairs:
+//        - Walk every Monte Carlo path through simulatePath().
+//        - Collect that pair's terminal-wealth and lifetime-tax distributions.
+//        - Compute success rate and percentiles (P10, P25, P50, P75, P90).
+//   3. For the user's currently-selected combo, also keep year-by-year wealth
+//      so the dashboard can draw the fan chart.
+//   4. Send all the numbers back to the page (app.js) as one big message.
+// ---------------------------------------------------------------------------
 function runMC(inp, opts) {
   const nPaths = opts.paths || 10000;
   const blockLen = opts.blockLen || 3;
@@ -349,7 +492,11 @@ function runMC(inp, opts) {
   postMessage({ type: 'result', combos, fanData, meta: { nPaths, nYears, blockLen, seed } });
 }
 
-// ---------- Message handler ----------
+// ---------------------------------------------------------------------------
+// Worker entry point. The page (app.js) calls postMessage({type:'run',...})
+// and this handler kicks off runMC(). Any error gets sent back as a normal
+// message so the page can show it in the overlay instead of crashing silently.
+// ---------------------------------------------------------------------------
 onmessage = (e) => {
   const { type, inputs, opts } = e.data;
   if (type === 'run') {

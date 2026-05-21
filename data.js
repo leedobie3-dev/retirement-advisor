@@ -1,6 +1,35 @@
-// Historical asset returns (1928-2024) and 2025 tax tables, extracted from fin186_FIXED.xlsx
-// Source: Damodaran 'histretSP.xls', Jan 2026 update
+// ============================================================================
+// data.js — All the constant data the simulator needs.
+//
+// This file is just a list of numbers. There is no logic here. Everything in
+// this file was copied directly out of the Excel workbook (fin186_FIXED.xlsx).
+//
+// Mapping to the Excel:
+//
+//   HIST           ↔  Excel sheet "HistData" rows 2-98
+//                     (97 years of asset returns, 1928-2024)
+//
+//   TAX_SINGLE     ↔  Excel sheet "TaxTables"
+//                       ordinary brackets:  rows for "Ordinary Income — Single"
+//                       ltcg brackets:      rows for "LTCG — Single"
+//                       stdDed, age65Add:   "Standard Deduction" rows
+//                       ssProv50, ssProv85: "SS Provisional Income" rows
+//
+//   RMD_FACTORS    ↔  Excel sheet "TaxTables", "Uniform Lifetime Table" rows
+//                     (the IRS divisor used to compute required minimum
+//                     distributions from age 73 onward)
+//
+//   ALLOCATIONS    ↔  Excel sheet "Strategies", column A rows 4-10
+//   WITHDRAWALS    ↔  Excel sheet "Strategies", "WITHDRAWAL STRATEGIES" rows
+//   STATIC_WEIGHTS ↔  Excel sheet "Strategies", cells A4:E10 (the four static
+//                     allocations: 60/40, EqualWeight, RiskParity, RobustRP)
+//   RISK_MULT      ↔  Excel sheet "Strategies", cells A13:B15
+// ============================================================================
 
+// HIST: one row per historical year. Each row has the total return (decimal,
+// so 0.43 means +43%) for stocks, bonds, real estate, and the commodity proxy
+// (gold), plus the year's CPI inflation rate.
+// Source: Aswath Damodaran, NYU Stern, "histretSP.xls" January 2026 update.
 export const HIST = [
   {y:1928,stk:0.438112,bnd:0.008355,cpi:-0.011561,re:0.014911,com:0.000969},
   {y:1929,stk:-0.082979,bnd:0.042038,cpi:0.005848,re:-0.020568,com:-0.001452},
@@ -101,6 +130,12 @@ export const HIST = [
   {y:2024,stk:0.248786,bnd:-0.016372,cpi:0.028881,re:0.039634,com:0.259570},
 ];
 
+// TAX_SINGLE: 2025 federal tax parameters for a Single filer.
+//   Each ordinary bracket is [low, high, rate]; rate applies to income in
+//   that band. LTCG brackets are [upperBound, rate] and stack on top of
+//   ordinary income (see ltcgTax() in engine.js).
+//   ssProv50 / ssProv85: the two Social Security provisional-income
+//   thresholds that decide what fraction of SS benefits get taxed.
 export const TAX_SINGLE = {
   ordinary: [
     [0,       11925,    0.10],
@@ -122,6 +157,11 @@ export const TAX_SINGLE = {
   ssProv85: 34000,
 };
 
+// RMD_FACTORS: IRS Uniform Lifetime Table. For each age starting at 73, the
+// required minimum distribution from a traditional account that year is
+//     traditional_balance / RMD_FACTORS[age]
+// So at 73 the IRS forces you to withdraw 1/26.5 (about 3.8%) of your
+// traditional balance; the percentage rises every year.
 export const RMD_FACTORS = {
   73: 26.5,
   74: 25.5,
@@ -168,12 +208,18 @@ export const RMD_FACTORS = {
   115: 2.9,
 };
 
-export const RMD_AGE = 73;
+export const RMD_AGE = 73;  // age at which RMDs begin (2025 IRS rule)
 
+// The six allocation strategies and five withdrawal strategies. Order matters:
+// the dashboard iterates these to build the 6×5 heatmap.
 export const ALLOCATIONS = ['60_40','EqualWeight','RiskParity','RobustRP','GlidePath','AgeBalanceAware'];
 export const WITHDRAWALS = ['TradFirst','RothFirst','TaxableFirst','Proportional','TaxAware'];
 
-// Static allocation weights [stk, bnd, re, com]
+// STATIC_WEIGHTS: portfolio weights for the four allocations whose weights
+// never change. Each row is [stocks, bonds, real estate, commodities] and
+// the four numbers always sum to 1. These mirror Excel "Strategies" A4:E10.
+// (GlidePath and AgeBalanceAware have weights that depend on the client's
+// age and balance, so they are computed in engine.js, not stored here.)
 export const STATIC_WEIGHTS = {
   '60_40':       [0.60, 0.40, 0.00, 0.00],
   'EqualWeight': [0.25, 0.25, 0.25, 0.25],
@@ -181,4 +227,7 @@ export const STATIC_WEIGHTS = {
   'RobustRP':    [0.20, 0.50, 0.18, 0.12],
 };
 
+// RISK_MULT: scales the equity portion of the dynamic allocations
+// (GlidePath, AgeBalanceAware) up or down depending on the client's risk
+// tolerance setting in the sidebar. Mirrors Excel "Strategies" A13:B15.
 export const RISK_MULT = { Conservative: 0.8, Moderate: 1.0, Aggressive: 1.2 };

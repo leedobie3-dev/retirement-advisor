@@ -1,7 +1,45 @@
-// Main UI: collects inputs, runs the worker, renders the dashboard.
+// ============================================================================
+// app.js — Everything the user sees and interacts with.
+//
+// This file is the "front of house." It does not do any simulation math
+// itself; that all happens in engine.js (running in a Web Worker thread).
+//
+// Responsibilities, in order:
+//   1. Read the client's inputs from the sidebar form.
+//   2. Send them to the engine and wait for the results to come back.
+//   3. Take those results and paint the dashboard: hero KPIs, heatmap, fan
+//      chart, terminal-wealth histogram, allocation donut, and two ranked
+//      comparison tables.
+//   4. Mark the "Run" button as "dirty" when the user edits a client field
+//      so they know their changes are unsaved until they hit the button.
+//
+// Mapping to the Excel workbook:
+//
+//   readInputs()        ↔  Excel "Inputs" sheet (B4:B34): all client fields
+//   readOpts()          ↔  Excel "Inputs" sheet: paths, block size, selected
+//                          allocation, selected withdrawal
+//   rankCombos()        ↔  the "HOW WE DETERMINE WHAT'S BEST" priority order
+//                          described in the "read me" sheet
+//   render()            ↔  Excel "Dashboard" sheet (top-level layout)
+//   renderHeatmap()     ↔  Excel "MonteCarlo" sheet, B8:F13 (success grid)
+//   renderAllocTable()  ↔  Excel "Dashboard" sheet, A25:G30
+//   renderWDTable()     ↔  Excel "Dashboard" sheet, A34:G38
+//   renderFan()         ↔  NEW — no Excel equivalent. Shows per-year wealth
+//                          percentiles for the currently selected combo.
+//   renderHist()        ↔  NEW — no Excel equivalent. Distribution of ending
+//                          wealth across paths.
+//   renderAllocDonut()  ↔  Visualization of Excel "Strategies" weights for
+//                          the currently selected allocation.
+// ============================================================================
+
 import { ALLOCATIONS, WITHDRAWALS, STATIC_WEIGHTS } from './data.js';
 
-// ---------- Element shortcuts ----------
+// ---------- Helpers ----------
+// $(...) is a shorthand for "find the HTML element with this id."
+// The number formatters turn raw numbers into readable strings:
+//   fmtMoney(1_500_000)  →  "$1.50M"
+//   fmtMoneyFull(...)    →  "$1,500,000" (used in tooltips)
+//   fmtPct(0.985)        →  "98.5%"
 const $ = (id) => document.getElementById(id);
 const fmtMoney = (n) => {
   if (n == null || !isFinite(n)) return '—';
@@ -38,6 +76,8 @@ let worker = null;
 let charts = {};
 
 // ---------- Inputs ----------
+// readInputs() pulls every value out of the sidebar form into one plain object.
+// This is the equivalent of reading cells B4:B34 on the Excel "Inputs" sheet.
 function readInputs() {
   return {
     filing: $('filing').value,
@@ -56,6 +96,8 @@ function readInputs() {
   };
 }
 
+// readOpts() pulls the simulation parameters (how many paths to run, the
+// block length, the random seed, and which combo the user has selected).
 function readOpts() {
   return {
     paths: +$('pathCount').value,
@@ -67,6 +109,10 @@ function readOpts() {
 }
 
 // ---------- Worker plumbing ----------
+// A "Worker" is a separate thread the browser runs the simulation in, so the
+// page stays responsive while it crunches numbers. We talk to it by sending
+// messages: the page posts "run" with the inputs; the worker posts back
+// "progress" updates and finally a "result" message with all the numbers.
 function showError(msg) {
   console.error('[Studio]', msg);
   $('overlayTitle').textContent = 'Simulation failed';
@@ -124,6 +170,13 @@ function runSim() {
 }
 
 // ---------- Recommendation ranking ----------
+// rankCombos() applies the priority order described in the Excel "read me"
+// sheet under "HOW WE DETERMINE WHAT'S 'BEST'":
+//   1. Higher success rate wins.
+//   2. Tie-break by P10 (sequence-risk floor) — protects against bad outcomes.
+//   3. Tie-break by lower median lifetime tax (efficiency).
+//   4. Tie-break by higher median terminal wealth (upside is last).
+// The top-ranked combo gets the ★ marker in the heatmap and tables.
 function rankCombos(combos) {
   const all = Object.entries(combos).map(([k, v]) => ({ key: k, ...v }));
   all.sort((a, b) => {
@@ -136,6 +189,9 @@ function rankCombos(combos) {
 }
 
 // ---------- Render ----------
+// render() takes the worker's result and updates every visible part of the
+// page. This is the equivalent of all the formulas on the Excel "Dashboard"
+// sheet recalculating after you change an input.
 function render(m) {
   const opts = readOpts();
   const sel = `${opts.selAlloc}_${opts.selWD}`;
@@ -187,6 +243,9 @@ function render(m) {
   renderWDTable(m.combos, opts, top.key);
 }
 
+// renderHeatmap() — builds the 6×5 grid showing success rate for every
+// (allocation × withdrawal) combination. Excel equivalent: "MonteCarlo"
+// sheet B8:F13. Click any cell to switch the selected combo.
 function renderHeatmap(combos, opts, topKey) {
   const el = $('heatmap');
   el.innerHTML = '';
@@ -228,6 +287,9 @@ function destroyChart(name) {
   if (charts[name]) { charts[name].destroy(); charts[name] = null; }
 }
 
+// renderFan() — draws the year-by-year wealth chart for the selected combo,
+// with shaded bands showing the P10-P90 and P25-P75 ranges around the median.
+// This visualization is new; the Excel did not have an equivalent chart.
 function renderFan(fd, opts) {
   destroyChart('fan');
   const ctx = $('fanChart').getContext('2d');
@@ -269,6 +331,9 @@ function renderFan(fd, opts) {
   });
 }
 
+// renderHist() — histogram of ending wealth across all paths for the
+// selected combo. The leftmost bar is the depleted-paths bucket (shown in
+// darker red). New visualization; no Excel equivalent.
 function renderHist(fd) {
   destroyChart('hist');
   const ctx = $('termHist').getContext('2d');
@@ -317,6 +382,10 @@ function renderHist(fd) {
   });
 }
 
+// renderAllocDonut() — pie chart of asset-class weights for the selected
+// allocation. For the four static strategies it pulls from STATIC_WEIGHTS
+// in data.js; for the two dynamic strategies it shows a representative
+// mid-retirement weighting (10 years after the client's retirement age).
 function renderAllocDonut(opts) {
   destroyChart('donut');
   const ctx = $('allocDonut').getContext('2d');
@@ -366,6 +435,10 @@ function renderAllocDonut(opts) {
   }
 }
 
+// renderAllocTable() — holds the withdrawal strategy fixed and compares all
+// six allocations side by side. Excel equivalent: "Dashboard" sheet A25:G30.
+// The fill bar in the last column shows each row's Median as a fraction of
+// the largest Median in the table (quick eyeball rank).
 function renderAllocTable(combos, opts, topKey) {
   const tbody = $('allocTable').querySelector('tbody');
   tbody.innerHTML = '';
@@ -398,6 +471,9 @@ function renderAllocTable(combos, opts, topKey) {
   }
 }
 
+// renderWDTable() — the mirror of renderAllocTable: holds the allocation
+// fixed and compares all five withdrawal strategies. Excel equivalent:
+// "Dashboard" sheet A34:G38.
 function renderWDTable(combos, opts, topKey) {
   const tbody = $('wdTable').querySelector('tbody');
   tbody.innerHTML = '';
@@ -431,6 +507,14 @@ function renderWDTable(combos, opts, topKey) {
 }
 
 // ---------- Input wiring ----------
+// Hook up the form controls so they actually do things:
+//   - Clicking "Run Simulation" triggers a full rerun.
+//   - Changing the selected allocation or withdrawal just repaints the
+//     dashboard with already-computed data (no simulation needed).
+//   - Editing any client field marks the Run button as "dirty" (turns it
+//     terracotta) so the user knows the simulation is stale until they
+//     click it. The simulation deliberately does NOT auto-run on every
+//     keystroke — that would be expensive and disorienting.
 $('runBtn').onclick = runSim;
 
 // Re-render (no full re-sim) when selection changes
