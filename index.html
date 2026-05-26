@@ -29,9 +29,9 @@
   <div class="brand">
     <div class="brand-text">
       <div class="brand-name">Retirement Strategy Studio</div>
-      <div class="brand-sub" title="The Monte Carlo engine resamples actual US asset returns from 1928 to 2024 (97 years of Damodaran data) to manufacture thousands of possible future return sequences.">
+      <div class="brand-sub" data-tooltip="The Monte Carlo engine resamples actual US asset returns from 1928 to 2024 (97 years of Damodaran data) to manufacture thousands of possible future return sequences.">
         Bootstrap Monte Carlo using 1928-2024 historical returns
-        <span class="info-i" title="Each Monte Carlo path is built by concatenating random 3-year blocks of historical asset returns drawn from the 97-year sample. This preserves crash sequences (1930-32 stays a unit, 2008 stays a unit) instead of mixing them randomly.">i</span>
+        <span class="info-i" data-tooltip="Each Monte Carlo path is built by concatenating random 3-year blocks of historical asset returns drawn from the 97-year sample. This preserves crash sequences (1930-32 stays a unit, 2008 stays a unit) instead of mixing them randomly.">i</span>
       </div>
     </div>
   </div>
@@ -95,11 +95,11 @@
       <div class="card-h">Cash flow</div>
       <div class="card-b">
         <div class="field">
-          <label>Annual savings <span class="info-i" title="Pre-tax dollars added to taxable brokerage each year while still working. Stops at retirement age.">i</span></label>
+          <label>Annual savings <span class="info-i" data-tooltip="Pre-tax dollars added to taxable brokerage each year while still working. Stops at retirement age.">i</span></label>
           <input id="savings" type="number" placeholder="0">
         </div>
         <div class="field">
-          <label>Retirement spending <span class="info-i" title="Annual spending in today's dollars (real, pre-tax). The engine inflates this each year by CPI and pulls from accounts to fund it; the income tax owed is separately computed and paid out of taxable.">i</span></label>
+          <label>Retirement spending <span class="info-i" data-tooltip="Annual spending in today's dollars (real, pre-tax). The engine inflates this each year by CPI and pulls from accounts to fund it; the income tax owed is separately computed and paid out of taxable.">i</span></label>
           <input id="spending" type="number" placeholder="0">
         </div>
         <div class="grid2">
@@ -130,17 +130,17 @@
       </div>
       <div class="hero-r">
         <div class="kpi kpi-hero">
-          <div class="kpi-l">Probability you don't run out of money <span class="info-i" title="The fraction of Monte Carlo paths in which the client never depletes all three accounts before plan end age. ≥95% is the planning standard.">i</span></div>
+          <div class="kpi-l">Probability you don't run out of money <span class="info-i" data-tooltip="The fraction of Monte Carlo paths in which the client never depletes all three accounts before plan end age. ≥95% is the planning standard.">i</span></div>
           <div class="kpi-v kpi-v-big" id="kpiSuccess">—</div>
           <div class="kpi-bar"><div id="kpiSuccessBar"></div></div>
         </div>
         <div class="kpi">
-          <div class="kpi-l">Median terminal real wealth <span class="info-i" title="The middle outcome across all Monte Carlo paths. Half of futures end with more than this, half with less. Expressed in today's dollars (inflation-adjusted).">i</span></div>
+          <div class="kpi-l">Median terminal real wealth <span class="info-i" data-tooltip="The middle outcome across all Monte Carlo paths. Half of futures end with more than this, half with less. Expressed in today's dollars (inflation-adjusted).">i</span></div>
           <div class="kpi-v" id="kpiMedian">—</div>
           <div class="kpi-sub" id="kpiMedianSub">P10 — , P90 —</div>
         </div>
         <div class="kpi">
-          <div class="kpi-l">Median lifetime tax <span class="info-i" title="Total federal income tax paid across all retirement years for the median path, in today's dollars (real). Does not include state, AMT, IRMAA, or NIIT.">i</span></div>
+          <div class="kpi-l">Median lifetime tax <span class="info-i" data-tooltip="Total federal income tax paid across all retirement years for the median path, in today's dollars (real). Does not include state, AMT, IRMAA, or NIIT.">i</span></div>
           <div class="kpi-v" id="kpiTax">—</div>
           <div class="kpi-sub">Real dollars, federal only</div>
         </div>
@@ -273,6 +273,11 @@
     <div class="overlay-sub" id="overlaySub">Resampling 10,000 paths</div>
   </div>
 </div>
+
+<!-- Custom hover tooltip — rendered next to the cursor when any element with
+     data-tooltip (or a JS-attached __tooltipHTML) is hovered. Replaces native
+     title= which has a 1-second delay and no HTML support. -->
+<div id="tooltip" class="tooltip-popup hidden" role="tooltip"></div>
 
 <script type="module" src="app.js"></script>
 </body>

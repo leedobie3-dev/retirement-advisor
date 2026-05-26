@@ -426,11 +426,15 @@ function renderHeatmap(combos, opts, topKey) {
   for (const w of WITHDRAWALS) {
     const h = document.createElement('div');
     h.className = 'hm-head'; h.textContent = wdLabel(w);
+    h.setAttribute('data-tooltip', '__rich__');
+    h.__tooltipHTML = `<strong>${wdLabel(w)}</strong> — withdrawal order<br>${WD_REASONS[w] || ''}`;
     el.appendChild(h);
   }
   for (const a of ALLOCATIONS) {
     const rh = document.createElement('div');
     rh.className = 'hm-row-head'; rh.textContent = allocLabel(a);
+    rh.setAttribute('data-tooltip', '__rich__');
+    rh.__tooltipHTML = `<strong>${allocLabel(a)}</strong> — allocation<br>${ALLOC_REASONS[a] || ''}`;
     el.appendChild(rh);
     for (const w of WITHDRAWALS) {
       const key = `${a}_${w}`;
@@ -441,8 +445,29 @@ function renderHeatmap(combos, opts, topKey) {
       const cell = document.createElement('div');
       cell.className = `hm-cell ${cls}${sel}${top}`;
       cell.innerHTML = `<span class="hm-v">${(c.success*100).toFixed(1)}%</span><span class="hm-s">P10 ${fmtMoney(c.p10)}</span>`;
-      const isTopForTitle = key === topKey ? '\n★ Top-ranked by the decision rule (success ≥ 95% AND highest P10 floor)\n' : '\n';
-      cell.title = `${allocLabel(a)} × ${wdLabel(w)}${isTopForTitle}Success: ${fmtPct(c.success)}\nP10: ${fmtMoneyFull(c.p10)}\nMedian: ${fmtMoneyFull(c.p50)}\nP90: ${fmtMoneyFull(c.p90)}\nMedian tax: ${fmtMoneyFull(c.median_tax)}\n\nClick to view this combination's details.`;
+      // Rich tooltip explaining BOTH strategies + the metrics for this combo.
+      // The data-tooltip attribute is set as a marker so the global listener
+      // fires; the actual HTML lives in __tooltipHTML to avoid attribute-length
+      // and HTML-escaping issues.
+      cell.setAttribute('data-tooltip', '__rich__');
+      cell.__tooltipHTML = `
+        <div class="tt-section">
+          <strong>${allocLabel(a)}</strong> — allocation<br>
+          ${ALLOC_REASONS[a] || ''}
+        </div>
+        <div class="tt-section">
+          <strong>${wdLabel(w)}</strong> — withdrawal order<br>
+          ${WD_REASONS[w] || ''}
+        </div>
+        <div class="tt-section tt-metrics">
+          Success: <strong>${fmtPct(c.success)}</strong><br>
+          P10: ${fmtMoneyFull(c.p10)}<br>
+          Median: ${fmtMoneyFull(c.p50)}<br>
+          P90: ${fmtMoneyFull(c.p90)}<br>
+          Median tax: ${fmtMoneyFull(c.median_tax)}
+        </div>
+        ${key === topKey ? '<div class="tt-section tt-top">★ Top-ranked by the decision rule</div>' : ''}
+        <div class="tt-section" style="color:#aaa;font-size:11px;">Click to view this combination's details.</div>`;
       cell.onclick = () => {
         selectedCombo = { alloc: a, wd: w };
         if (lastResult) render(lastResult);
@@ -634,6 +659,8 @@ function renderAllocTable(combos, opts, topKey) {
       <td>${fmtPct(r.depletion)}</td>
       <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${(r.p50/maxP50*100).toFixed(0)}%"></div></div></td>
     `;
+    tr.setAttribute('data-tooltip', '__rich__');
+    tr.__tooltipHTML = `<strong>${allocLabel(r.alloc)}</strong> — allocation<br>${ALLOC_REASONS[r.alloc] || ''}<div class="tt-section" style="color:#aaa;font-size:11px;">Click row to view this allocation paired with the currently-selected withdrawal.</div>`;
     tr.onclick = () => { selectedCombo = { ...selectedCombo, alloc: r.alloc }; if (lastResult) render(lastResult); };
     tr.style.cursor = 'pointer';
     tbody.appendChild(tr);
@@ -669,6 +696,8 @@ function renderWDTable(combos, opts, topKey) {
       <td>${fmtPct(r.depletion)}</td>
       <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${(r.p50/maxP50*100).toFixed(0)}%"></div></div></td>
     `;
+    tr.setAttribute('data-tooltip', '__rich__');
+    tr.__tooltipHTML = `<strong>${wdLabel(r.wd)}</strong> — withdrawal order<br>${WD_REASONS[r.wd] || ''}<div class="tt-section" style="color:#aaa;font-size:11px;">Click row to view this withdrawal paired with the currently-selected allocation.</div>`;
     tr.onclick = () => { selectedCombo = { ...selectedCombo, wd: r.wd }; if (lastResult) render(lastResult); };
     tr.style.cursor = 'pointer';
     tbody.appendChild(tr);
@@ -740,6 +769,46 @@ function capCostBasis() {
 $('taxable').addEventListener('input', capCostBasis);
 $('cost_basis').addEventListener('input', capCostBasis);
 $('cost_basis').addEventListener('blur', capCostBasis);
+
+// ---------- Custom tooltip system ----------
+// Replaces native title= attributes which have a 1-second delay and don't
+// render HTML. Any element with a data-tooltip attribute (plain text or HTML)
+// OR a __tooltipHTML JS property shows the tooltip on hover.
+const tooltipEl = $('tooltip');
+function showTooltip(e, html) {
+  tooltipEl.innerHTML = html;
+  tooltipEl.classList.remove('hidden');
+  positionTooltip(e);
+}
+function positionTooltip(e) {
+  const tw = tooltipEl.offsetWidth;
+  const th = tooltipEl.offsetHeight;
+  const pad = 14;
+  let left = e.clientX + pad;
+  let top = e.clientY + pad;
+  if (left + tw > window.innerWidth - 6) left = e.clientX - tw - pad;
+  if (top + th > window.innerHeight - 6) top = e.clientY - th - pad;
+  if (top < 6) top = 6;
+  if (left < 6) left = 6;
+  tooltipEl.style.left = left + 'px';
+  tooltipEl.style.top = top + 'px';
+}
+function hideTooltip() { tooltipEl.classList.add('hidden'); }
+
+document.addEventListener('mouseover', (e) => {
+  const el = e.target.closest('[data-tooltip]');
+  if (!el) return;
+  const rich = el.__tooltipHTML;
+  const html = rich || el.getAttribute('data-tooltip');
+  if (html) showTooltip(e, html);
+});
+document.addEventListener('mousemove', (e) => {
+  if (!tooltipEl.classList.contains('hidden')) positionTooltip(e);
+});
+document.addEventListener('mouseout', (e) => {
+  const el = e.target.closest('[data-tooltip]');
+  if (el) hideTooltip();
+});
 
 // Form starts blank — no auto-run. User fills in the client info and clicks
 // Run Simulation. The hero shows an empty-state message until results arrive.
