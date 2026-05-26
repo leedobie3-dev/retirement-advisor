@@ -95,7 +95,7 @@ const ALLOC_REASONS = {
   '60_40': 'is the static 60% stocks / 40% bonds baseline — simple, well-studied, no exotic assets.',
   'EqualWeight': 'holds 25% each in stocks, bonds, real estate, and gold — trades some return for diversification.',
   'RiskParity': 'sizes positions by inverse volatility (~18% stocks, 55% bonds, 15% real estate, 12% gold), balancing risk contribution across asset classes.',
-  'RobustRP': 'is risk parity adjusted for cross-asset correlations, trimming the equity-plus-real-estate cluster.',
+  'RobustRP': 'shifts about 5pp from bonds into the equity-and-real-estate sleeve vs plain Risk Parity (20% stocks, 50% bonds, 18% real estate, 12% gold) — intended to be robust to a stock-bond correlation breakdown like 2022.',
   'GlidePath': 'reduces equity as the client ages (target ≈ max(20%, 110 − age)% × risk tolerance), with the remainder in bonds.',
   'AgeBalanceAware': 'reduces equity further when the spending-to-balance ratio is high, and diversifies the equity sleeve into real estate (20%) and gold (15%) — defensive when accounts are stressed.',
 };
@@ -384,7 +384,7 @@ function render(m) {
       `<div class="rec-why"><strong>Why this one (among failed plans), by the ${methLink}:</strong> ${why}</div>`;
   } else if (top.success < 0.90) {
     $('heroRecommend').innerHTML =
-      `<span class="recommend-pill warn-pill">⚠ Best of a bad batch: <strong>${topAllocLabel}, ${topWDLabel}</strong> — ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Below the 90% <a href="#meth-decision" class="meth-link-inline">planning standard</a>, so this is the least-bad option, not a safe plan.</span>` +
+      `<span class="recommend-pill warn-pill">⚠ Best of a bad batch: <strong>${topAllocLabel}, ${topWDLabel}</strong> — ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Below 90% — this strategy depletes in more than 1 in 10 simulated futures. The 95% <a href="#meth-decision" class="meth-link-inline">planning standard</a> is the recommended bar; this plan does not clear it.</span>` +
       `<div class="rec-why"><strong>Why this one, by the ${methLink}:</strong> ${why}</div>`;
   } else if (top.key !== sel) {
     $('heroRecommend').innerHTML =

@@ -239,7 +239,7 @@
 
       <div class="meth-section" id="meth-alloc">
         <div class="meth-label">Allocation strategies</div>
-        <p>60/40 is the static benchmark, ignoring real estate and gold. Equal Weight holds 25% in each of stocks, bonds, real estate, and gold. Risk Parity uses inverse-volatility weights (stocks 18%, bonds 55%, real estate 15%, gold 12%). Robust Risk Parity adjusts those weights for cross-asset correlations, mainly trimming the stocks-plus-real-estate cluster. Glide Path holds equity equal to max(20%, 110 minus age) percent, scaled by a risk-tolerance multiplier (0.8 / 1.0 / 1.2 for Conservative / Moderate / Aggressive), with the remainder in bonds. Age-Balance Aware uses the same age-based glide but reduces equity further when the spending-to-balance burden is high, and diversifies the equity sleeve across stocks (65%), real estate (20%), and gold (15%).</p>
+        <p>60/40 is the static benchmark, ignoring real estate and gold. Equal Weight holds 25% in each of stocks, bonds, real estate, and gold. Risk Parity uses inverse-volatility weights (stocks 18%, bonds 55%, real estate 15%, gold 12%). Robust Risk Parity shifts about 5 percentage points from bonds into the equity-and-real-estate sleeve (20% stocks, 50% bonds, 18% real estate, 12% gold). It is intended as a hedge against a stock-bond correlation breakdown like 2022, where bond-heavy plain RP suffered. Glide Path holds equity equal to max(20%, 110 minus age) percent, scaled by a risk-tolerance multiplier (0.8 / 1.0 / 1.2 for Conservative / Moderate / Aggressive), with the remainder in bonds. Age-Balance Aware uses the same age-based glide but reduces equity further when the spending-to-balance burden is high, and diversifies the equity sleeve across stocks (65%), real estate (20%), and gold (15%).</p>
       </div>
 
       <div class="meth-section" id="meth-wd">
@@ -254,7 +254,14 @@
 
       <div class="meth-section" id="meth-decision">
         <div class="meth-label">Decision rule</div>
-        <p>The "top-ranked" tag in the heatmap and tables applies a four-level priority. First, success rate at or above 95%. Among combinations that clear that bar, higher P10 (10th-percentile terminal wealth) wins, because the goal is protection against bad-sequence outcomes. As a tie-breaker, lower median lifetime tax. As a final tie-breaker, higher median terminal wealth. The order is deliberate: a portfolio that depletes is a catastrophic failure, while one that finishes with less but never runs out is acceptable. Upside is the last consideration.</p>
+        <p>The "top-ranked" tag in the heatmap and tables applies a four-level priority in this strict order:</p>
+        <ol style="margin-left: 20px;">
+          <li><strong>Higher success rate wins</strong> — the fraction of Monte Carlo paths in which the client never depletes all three accounts. 95% is the displayed planning standard; below 90% triggers the "best of a bad batch" warning.</li>
+          <li><strong>If success rates are tied, higher P10 wins</strong> — the 10th-percentile terminal wealth, our floor for bad-sequence outcomes.</li>
+          <li><strong>If P10 also ties, lower median lifetime tax wins.</strong></li>
+          <li><strong>Final tiebreaker: higher median terminal wealth (P50).</strong></li>
+        </ol>
+        <p>The order is deliberate: a portfolio that depletes is a catastrophic failure, while one that finishes with less but never runs out is acceptable. Upside is the last consideration. The "Why this one" line in the hero names the specific tier that decided the rank, comparing the top combo to the runner-up.</p>
       </div>
 
       <div class="meth-section" id="meth-caveats">
