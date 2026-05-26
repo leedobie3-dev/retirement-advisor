@@ -344,33 +344,37 @@ function render(m) {
   // Hero
   $('heroAlloc').textContent = allocLabel(opts.selAlloc);
   $('heroWD').textContent = wdLabel(opts.selWD);
-  $('heroEyebrow').textContent = sel === top.key ? 'Recommended strategy (top-ranked by decision rule)' : 'Currently viewing — click a cell below to switch';
-  $('heroNotes').textContent = combo.success >= 0.95
-    ? 'Clears the 95% threshold. P10 and tax efficiency drive the ranking below.'
+  $('heroEyebrow').innerHTML = sel === top.key
+    ? 'Recommended strategy (top-ranked by <a href="#meth-decision" class="meth-link-inline">decision rule</a>)'
+    : 'Currently viewing — click a cell below to switch';
+  const notesHTML = combo.success >= 0.95
+    ? 'Clears the 95% <a href="#meth-decision" class="meth-link-inline">planning standard</a>. P10 and tax efficiency drive the ranking below.'
     : combo.success >= 0.90
-    ? 'Below the 95% threshold. Consider a more conservative withdrawal order or a higher-success allocation.'
+    ? 'Below the 95% <a href="#meth-decision" class="meth-link-inline">planning standard</a>. Consider a more conservative withdrawal order or a higher-success allocation.'
     : combo.success > 0
     ? 'High depletion risk. Not appropriate as a primary recommendation.'
     : 'Every Monte Carlo path depleted before plan end. The plan as entered is not feasible with this strategy. Try lower spending, more savings, or a different withdrawal order.';
+  $('heroNotes').innerHTML = notesHTML;
 
   const why = explainTopRank(top, ranked);
 
+  const methLink = '<a href="#meth-decision" class="meth-link-inline">decision rule</a>';
   if (top.success === 0) {
     $('heroRecommend').innerHTML =
       `<span class="recommend-pill warn-pill">⚠ All strategies fail. Among failed plans, "${topAllocLabel} + ${topWDLabel}" loses the least to taxes before depleting — useful only if you want to minimize the bleed. <strong>Not a viable recommendation.</strong></span>` +
-      `<div class="rec-why"><strong>Why this one (among failed plans):</strong> ${why}</div>`;
+      `<div class="rec-why"><strong>Why this one (among failed plans), by the ${methLink}:</strong> ${why}</div>`;
   } else if (top.success < 0.90) {
     $('heroRecommend').innerHTML =
-      `<span class="recommend-pill warn-pill">⚠ Best of a bad batch: <strong>${topAllocLabel}, ${topWDLabel}</strong> — ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Below the 90% planning standard, so this is the least-bad option, not a safe plan.</span>` +
-      `<div class="rec-why"><strong>Why this one:</strong> ${why}</div>`;
+      `<span class="recommend-pill warn-pill">⚠ Best of a bad batch: <strong>${topAllocLabel}, ${topWDLabel}</strong> — ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Below the 90% <a href="#meth-decision" class="meth-link-inline">planning standard</a>, so this is the least-bad option, not a safe plan.</span>` +
+      `<div class="rec-why"><strong>Why this one, by the ${methLink}:</strong> ${why}</div>`;
   } else if (top.key !== sel) {
     $('heroRecommend').innerHTML =
       `<span class="recommend-pill">★ Top-ranked: <strong>${topAllocLabel}, ${topWDLabel}</strong></span> &nbsp; ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Click any cell in the matrix below to view a different combination.` +
-      `<div class="rec-why"><strong>Why this one:</strong> ${why}</div>`;
+      `<div class="rec-why"><strong>Why this one, by the ${methLink}:</strong> ${why}</div>`;
   } else {
     $('heroRecommend').innerHTML =
       `<span class="recommend-pill">★ This IS the top-ranked strategy</span>` +
-      `<div class="rec-why"><strong>Why this one:</strong> ${why}</div>`;
+      `<div class="rec-why"><strong>Why this one, by the ${methLink}:</strong> ${why}</div>`;
   }
 
   // Note about trad=0 case: TradFirst and RothFirst can still differ
@@ -398,6 +402,9 @@ function render(m) {
 
   // Heatmap
   renderHeatmap(m.combos, opts, top.key);
+
+  // First-run: chart placeholders disappear once Chart.js paints real data.
+  hideChartPlaceholders();
 
   // Fan
   renderFan(m.fanData, opts);
@@ -467,7 +474,7 @@ function renderHeatmap(combos, opts, topKey) {
           P90: ${fmtMoneyFull(c.p90)}<br>
           Median tax: ${fmtMoneyFull(c.median_tax)}
         </div>
-        ${key === topKey ? '<div class="tt-section tt-top">★ Top-ranked by the decision rule</div>' : ''}
+        ${key === topKey ? '<div class="tt-section tt-top">★ Top-ranked by the decision rule (see methodology section)</div>' : ''}
         <div class="tt-section" style="color:#aaa;font-size:11px;">Click to view this combination's details.</div>`;
       cell.onclick = () => {
         selectedCombo = { alloc: a, wd: w };
@@ -716,6 +723,23 @@ function renderWDTable(combos, opts, topKey) {
 //     keystroke — that would be expensive and disorienting.
 $('runBtn').onclick = runSim;
 
+// Update the topbar subtitle whenever the user switches the return model.
+// Also updates the methodology deep-link to point at the right subsection.
+function updateModelLabel() {
+  const isMarkov = $('returnModel').value === 'markov';
+  if (isMarkov) {
+    $('brandSubText').textContent = 'Markov 2-state regime-switching using 1928-2024 historical returns';
+    $('brandMethLink').setAttribute('href', '#meth-markov');
+    $('brandMethLink').setAttribute('data-tooltip', 'Jump to the Markov regime-switching methodology');
+  } else {
+    $('brandSubText').textContent = 'Block Bootstrap Monte Carlo using 1928-2024 historical returns';
+    $('brandMethLink').setAttribute('href', '#meth-bootstrap');
+    $('brandMethLink').setAttribute('data-tooltip', 'Jump to the Block Bootstrap methodology');
+  }
+}
+$('returnModel').addEventListener('change', updateModelLabel);
+updateModelLabel();  // initial sync
+
 // Save Report: open the browser's print dialog. The print stylesheet hides
 // non-essential UI (sidebar form, run button) so the result is a clean PDF.
 $('saveBtn').onclick = () => {
@@ -810,6 +834,110 @@ document.addEventListener('mouseout', (e) => {
   const el = e.target.closest('[data-tooltip]');
   if (el) hideTooltip();
 });
+
+// ---------- Empty-state rendering ----------
+// Before any simulation has run, paint the layout with placeholder structures
+// (matrix grid, table rows, chart hints) so the page doesn't look broken.
+// Each placeholder cell/row still has the strategy tooltip so users can browse
+// the methodology before running.
+function renderEmptyState() {
+  // Empty heatmap: full 6×5 grid with row/col headers and "—" placeholders
+  const hm = $('heatmap');
+  hm.innerHTML = '';
+  const corner = document.createElement('div');
+  corner.className = 'hm-head';
+  hm.appendChild(corner);
+  for (const w of WITHDRAWALS) {
+    const h = document.createElement('div');
+    h.className = 'hm-head'; h.textContent = wdLabel(w);
+    h.setAttribute('data-tooltip', '__rich__');
+    h.__tooltipHTML = `<strong>${wdLabel(w)}</strong> — withdrawal order<br>${WD_REASONS[w] || ''}`;
+    hm.appendChild(h);
+  }
+  for (const a of ALLOCATIONS) {
+    const rh = document.createElement('div');
+    rh.className = 'hm-row-head'; rh.textContent = allocLabel(a);
+    rh.setAttribute('data-tooltip', '__rich__');
+    rh.__tooltipHTML = `<strong>${allocLabel(a)}</strong> — allocation<br>${ALLOC_REASONS[a] || ''}`;
+    hm.appendChild(rh);
+    for (const w of WITHDRAWALS) {
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell hm-cell-empty';
+      cell.innerHTML = '<span class="hm-v">—</span><span class="hm-s">P10 —</span>';
+      cell.setAttribute('data-tooltip', '__rich__');
+      cell.__tooltipHTML = `<div class="tt-section"><strong>${allocLabel(a)}</strong> — allocation<br>${ALLOC_REASONS[a] || ''}</div><div class="tt-section"><strong>${wdLabel(w)}</strong> — withdrawal order<br>${WD_REASONS[w] || ''}</div><div class="tt-section" style="color:#aaa;font-size:11px;">Run a simulation to see metrics for this combination.</div>`;
+      hm.appendChild(cell);
+    }
+  }
+
+  // Empty allocation table
+  const allocBody = $('allocTable').querySelector('tbody');
+  allocBody.innerHTML = '';
+  $('allocCmpWD').textContent = '—';
+  for (const a of ALLOCATIONS) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = `
+      <td>${allocLabel(a)}</td>
+      <td><span class="pill">—</span></td>
+      <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+      <td class="bar-cell"><div class="bar-track"></div></td>`;
+    tr.setAttribute('data-tooltip', '__rich__');
+    tr.__tooltipHTML = `<strong>${allocLabel(a)}</strong> — allocation<br>${ALLOC_REASONS[a] || ''}`;
+    allocBody.appendChild(tr);
+  }
+
+  // Empty withdrawal table
+  const wdBody = $('wdTable').querySelector('tbody');
+  wdBody.innerHTML = '';
+  $('wdCmpAlloc').textContent = '—';
+  for (const w of WITHDRAWALS) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = `
+      <td>${wdLabel(w)}</td>
+      <td><span class="pill">—</span></td>
+      <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+      <td class="bar-cell"><div class="bar-track"></div></td>`;
+    tr.setAttribute('data-tooltip', '__rich__');
+    tr.__tooltipHTML = `<strong>${wdLabel(w)}</strong> — withdrawal order<br>${WD_REASONS[w] || ''}`;
+    wdBody.appendChild(tr);
+  }
+
+  // Empty chart placeholders: small "no data yet" overlay text in each canvas
+  // wrapper. We add a sibling div instead of touching the canvas, then hide it
+  // when the real chart renders.
+  for (const id of ['fanChart', 'termHist', 'allocDonut']) {
+    const canvas = $(id);
+    if (!canvas) continue;
+    const wrap = canvas.parentElement;
+    let ph = wrap.querySelector('.chart-placeholder');
+    if (!ph) {
+      ph = document.createElement('div');
+      ph.className = 'chart-placeholder';
+      ph.textContent = 'Run a simulation to populate this chart';
+      wrap.appendChild(ph);
+    }
+    ph.style.display = '';
+  }
+
+  // Empty allocation legend
+  const leg = $('allocLegend');
+  if (leg) {
+    leg.innerHTML = `
+      <div class="alloc-legend-row"><div class="sw"><div class="dot" style="background:#181818"></div>Stocks</div><div class="val">—</div></div>
+      <div class="alloc-legend-row"><div class="sw"><div class="dot" style="background:#a44a2c"></div>Bonds</div><div class="val">—</div></div>
+      <div class="alloc-legend-row"><div class="sw"><div class="dot" style="background:#7a8a6a"></div>Real estate</div><div class="val">—</div></div>
+      <div class="alloc-legend-row"><div class="sw"><div class="dot" style="background:#d8a878"></div>Gold</div><div class="val">—</div></div>`;
+  }
+}
+
+// Hide chart placeholders when real charts render (called from render()).
+function hideChartPlaceholders() {
+  document.querySelectorAll('.chart-placeholder').forEach(p => p.style.display = 'none');
+}
+
+renderEmptyState();
 
 // Form starts blank — no auto-run. User fills in the client info and clicks
 // Run Simulation. The hero shows an empty-state message until results arrive.

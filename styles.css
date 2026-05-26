@@ -93,6 +93,48 @@ html, body {
 }
 .btn-secondary:hover { background: var(--line); }
 
+/* Inline methodology link — appears in hero text, recommend pill, etc. */
+.meth-link, .meth-link-inline {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+  transition: opacity 0.15s;
+}
+.meth-link:hover, .meth-link-inline:hover { opacity: 0.7; }
+.meth-link { margin-left: 8px; font-size: 11px; }
+.meth-link-inline { font-weight: 500; }
+
+/* Empty/placeholder visual states (before first simulation runs). */
+.hm-cell-empty {
+  color: var(--ink-3) !important;
+  background: #f7f4ee;
+  cursor: default !important;
+  opacity: 0.8;
+}
+.hm-cell-empty:hover { background: #efeae0; }
+.empty-row td {
+  color: var(--ink-3) !important;
+  font-variant-numeric: tabular-nums;
+}
+.empty-row .pill { background: var(--line-2); color: var(--ink-3); }
+.empty-row .bar-track { background: var(--line-2); }
+
+/* Chart placeholder overlay. The chart-wrap is position:relative; this sits
+   centered on top of the empty canvas. Removed once a real chart renders. */
+.chart-wrap { position: relative; }
+.chart-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-style: italic;
+  pointer-events: none;
+  background: repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.015) 8px, rgba(0,0,0,0.015) 16px);
+}
+
 /* Custom tooltip popup — replaces native title= which has a 1s delay and
    no HTML support. Positioned by JS in app.js next to the cursor. */
 .tooltip-popup {

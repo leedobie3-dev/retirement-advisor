@@ -29,9 +29,9 @@
   <div class="brand">
     <div class="brand-text">
       <div class="brand-name">Retirement Strategy Studio</div>
-      <div class="brand-sub" data-tooltip="The Monte Carlo engine resamples actual US asset returns from 1928 to 2024 (97 years of Damodaran data) to manufacture thousands of possible future return sequences.">
-        Bootstrap Monte Carlo using 1928-2024 historical returns
-        <span class="info-i" data-tooltip="Each Monte Carlo path is built by concatenating random 3-year blocks of historical asset returns drawn from the 97-year sample. This preserves crash sequences (1930-32 stays a unit, 2008 stays a unit) instead of mixing them randomly.">i</span>
+      <div class="brand-sub">
+        <span id="brandSubText">Bootstrap Monte Carlo using 1928-2024 historical returns</span>
+        <a href="#methodology" class="meth-link" id="brandMethLink" data-tooltip="Jump to the methodology section">methodology ↓</a>
       </div>
     </div>
   </div>
@@ -210,54 +210,54 @@
       </div>
     </div>
 
-    <div class="methodology">
-      <div class="meth-section">
+    <div class="methodology" id="methodology">
+      <div class="meth-section" id="meth-computing">
         <div class="meth-label">What we are computing</div>
         <p>Every run sweeps all 30 combinations of six allocation strategies and five withdrawal strategies, simulating each combination on the same set of Monte Carlo paths. Each path is a full retirement plan, year by year, from the client's current age to plan end. For every path we track three account types (taxable, traditional, Roth), apply contributions during accumulation, apply withdrawals and Social Security during retirement, compute federal tax, and record the ending wealth in real (inflation-adjusted) dollars. The summary numbers in the dashboard are percentiles across paths.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-data">
         <div class="meth-label">Where the data comes from</div>
         <p>Annual asset returns, 1928 to 2024 (97 years), from Aswath Damodaran's <span class="ink-pill">histretSP.xls</span> (NYU Stern, January 2026 update). Stocks are S&amp;P 500 total return including dividends. Bonds are 10-year US Treasury total return. Real estate uses Damodaran's REIT series. The fourth asset is gold (LBMA spot), used as a long-history alternative-asset proxy because broad-commodity index data does not extend pre-1970. Inflation is CPI-U. Federal tax brackets, standard deductions, LTCG thresholds, Social Security provisional-income thresholds, and the Uniform Lifetime Table RMD divisors are 2025 IRS figures, Single filer.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-models">
         <div class="meth-label">Return models, in brief</div>
         <p>Two sampling models are available via the "Return model" dropdown. Both resample from the same 1928 to 2024 historical record, so both inherit empirical fat tails. They differ in how they chain years together.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-bootstrap">
         <div class="meth-label">Block Bootstrap (default)</div>
         <p>Each Monte Carlo path is built by drawing random 3-year contiguous blocks from history and concatenating them until we have one return year per simulation year. Blocks preserve short-horizon serial correlation that pure IID resampling destroys: 1930 to 1932 stays a unit, 2000 to 2002 stays a unit, and so on. Block draws themselves are independent, so a Depression block can be followed by a 1990s block. This is the academic default for retirement Monte Carlo (Pfau, Bengen). With 10,000 paths and a 60-plus year horizon, P10 and P90 estimates are stable to within roughly a percentage point across reruns with different seeds.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-markov">
         <div class="meth-label">Markov 2-state (regime-switching block bootstrap)</div>
         <p>A two-state hidden Markov model is fit offline to the annual stock-return series using Baum-Welch EM. The model identifies two latent regimes that we label "steady" (37 years, low volatility 10.9%, high mean +26%) and "volatile" (60 years, high volatility 18.4%, near-zero mean). These are <em>volatility</em> regimes, not bull and bear in the market-narrative sense. Annual data does not give EM enough signal to separate modest-positive years from outright-negative years, so the volatile bucket contains both. About 74% of historical years had positive stock returns, but only 37 of those fit the tight steady distribution; the rest are classified as volatile. Importantly, every well-known crash year (1929 to 1932, 1937, 1973 to 1974, 2000 to 2002, 2008, 2022) does land in the volatile regime, so the regime persistence in the model correctly captures crash clustering.</p>
         <p>The fitted transition matrix has P(volatile remains volatile) = 0.60 and P(steady flips to volatile) = 0.73, with an expected volatile-regime duration of 2.5 years. At sampling time, each path begins by drawing a regime from the long-run stationary distribution (35% steady, 65% volatile). Each subsequent year transitions according to the fitted matrix, and a historical year tagged with that regime is bootstrapped to provide the actual asset returns. The result preserves regime persistence (volatile years cluster together) AND empirical fat tails (we sample real historical bundles, not Gaussian draws). Success rates and P10 figures under the Markov model are typically 1 to 3 percentage points worse than under plain block bootstrap, because regime persistence increases sequence risk. The gap between the two models is the estimate of how much sequence risk plain bootstrap is missing.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-alloc">
         <div class="meth-label">Allocation strategies</div>
         <p>60/40 is the static benchmark, ignoring real estate and gold. Equal Weight holds 25% in each of stocks, bonds, real estate, and gold. Risk Parity uses inverse-volatility weights (stocks 18%, bonds 55%, real estate 15%, gold 12%). Robust Risk Parity adjusts those weights for cross-asset correlations, mainly trimming the stocks-plus-real-estate cluster. Glide Path holds equity equal to max(20%, 110 minus age) percent, scaled by a risk-tolerance multiplier (0.8 / 1.0 / 1.2 for Conservative / Moderate / Aggressive), with the remainder in bonds. Age-Balance Aware uses the same age-based glide but reduces equity further when the spending-to-balance burden is high, and diversifies the equity sleeve across stocks (65%), real estate (20%), and gold (15%).</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-wd">
         <div class="meth-label">Withdrawal strategies</div>
         <p>Traditional First drains tax-deferred accounts first, then taxable, then Roth, maximizing deferred-tax growth in the Roth but bunching ordinary income early. Roth First reverses that order. Taxable First is the conventional rule of thumb. Proportional draws pro-rata across all three account types each year. Tax-Aware fills the ordinary income brackets up to the top of the 12% bracket from traditional withdrawals, then takes long-term capital gains from taxable, then more traditional if needed, with Roth as the final reserve. Required Minimum Distributions are enforced after age 73 regardless of strategy.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-tax">
         <div class="meth-label">Tax model</div>
         <p>Ordinary income uses 2025 federal Single brackets (10/12/22/24/32/35/37). Long-term capital gains stack on top of ordinary taxable income and are taxed at 0/15/20 according to where the gains fall in the LTCG bracket schedule. Social Security taxation uses provisional income (other taxable income plus half of SS benefits) against the 25,000 and 34,000 thresholds, taxing up to 50% then up to 85% of benefits. Standard deduction is 15,000 with a 2,000 age-65 add-on. Cost basis in the taxable account is tracked dynamically: each withdrawal consumes basis proportionally, and pre-retirement contributions add basis dollar-for-dollar. State income tax is not modeled.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-decision">
         <div class="meth-label">Decision rule</div>
         <p>The "top-ranked" tag in the heatmap and tables applies a four-level priority. First, success rate at or above 95%. Among combinations that clear that bar, higher P10 (10th-percentile terminal wealth) wins, because the goal is protection against bad-sequence outcomes. As a tie-breaker, lower median lifetime tax. As a final tie-breaker, higher median terminal wealth. The order is deliberate: a portfolio that depletes is a catastrophic failure, while one that finishes with less but never runs out is acceptable. Upside is the last consideration.</p>
       </div>
 
-      <div class="meth-section">
+      <div class="meth-section" id="meth-caveats">
         <div class="meth-label">Caveats</div>
         <p>Bootstrap from 1928 to 2024 assumes the future return distribution resembles the historical sample. That is a strong assumption: it embeds the realized US equity premium and bond returns from the post-war era and a particular path of inflation. Real-estate and commodity proxies introduce additional uncertainty. The tax model is a simplification of a complex code and ignores state, AMT, IRMAA, NIIT, and many edge cases. This is decision support, not personalized advice. Use the dashboard to compare strategies and surface tradeoffs; advisor judgment is still required for client-specific factors such as longevity expectation, healthcare reserves, legacy goals, and behavioral risk tolerance.</p>
       </div>
