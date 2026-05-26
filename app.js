@@ -70,25 +70,89 @@ const WD_LABELS = {
   'TaxAware': 'Tax-Aware',
 };
 
+// Split a combo key like "60_40_TradFirst" or "EqualWeight_TradFirst" into
+// [allocation, withdrawal]. A naive split on '_' breaks on "60_40" because
+// the allocation itself contains an underscore. We match the allocation by
+// looking up each known key as a prefix.
+const ALLOC_KEYS = ['60_40', 'EqualWeight', 'RiskParity', 'RobustRP', 'GlidePath', 'AgeBalanceAware'];
+function splitComboKey(key) {
+  for (const a of ALLOC_KEYS) {
+    if (key.startsWith(a + '_')) return [a, key.slice(a.length + 1)];
+  }
+  // Fallback: simple split
+  const i = key.lastIndexOf('_');
+  return [key.slice(0, i), key.slice(i + 1)];
+}
+
+// Safe label accessors: never let "undefined" reach the UI. If the key isn't
+// in the label table, fall back to the raw key, then to an em-dash.
+function allocLabel(k) { return (k && ALLOC_LABELS[k]) || k || '—'; }
+function wdLabel(k) { return (k && WD_LABELS[k]) || k || '—'; }
+
 // ---------- State ----------
 let lastResult = null;
 let worker = null;
 let charts = {};
 
+// Which combo is currently being viewed (an OUTPUT of the simulation, not an
+// input). On first render it defaults to the top-ranked combo; user can click
+// any heatmap cell or table row to switch. Stored in JS, not in the DOM, so
+// there are no hidden selectors to confuse the user.
+let selectedCombo = null;  // { alloc, wd } or null before first run
+
+// Required input fields. The form starts blank; the user must fill these in
+// before the simulation can run.
+const REQUIRED_FIELDS = ['risk', 'age_now', 'age_ret', 'age_end',
+  'taxable', 'traditional', 'roth', 'cost_basis',
+  'savings', 'spending', 'ss_age', 'ss_amt'];
+
+function validateInputs() {
+  const missing = [];
+  for (const id of REQUIRED_FIELDS) {
+    const el = $(id);
+    if (!el) continue;
+    const v = el.value;
+    // Empty string (including from "blank" number inputs) is always invalid.
+    // For number inputs we ALSO require a finite parsed value.
+    if (v === '' || v === null) {
+      missing.push(id);
+    } else if (el.type === 'number' && !Number.isFinite(+v)) {
+      missing.push(id);
+    }
+  }
+  // Sanity: ages must be ordered (only check if all present)
+  const an = +$('age_now').value, ar = +$('age_ret').value, ae = +$('age_end').value;
+  if (Number.isFinite(an) && Number.isFinite(ar) && $('age_now').value !== '' && $('age_ret').value !== '' && ar < an) {
+    missing.push('age_ret must be ≥ age_now');
+  }
+  if (Number.isFinite(ar) && Number.isFinite(ae) && $('age_ret').value !== '' && $('age_end').value !== '' && ae < ar) {
+    missing.push('age_end must be ≥ age_ret');
+  }
+  return missing;
+}
+
 // ---------- Inputs ----------
-// readInputs() pulls every value out of the sidebar form into one plain object.
-// This is the equivalent of reading cells B4:B34 on the Excel "Inputs" sheet.
 function readInputs() {
+  const taxable = +$('taxable').value;
+  let cost_basis = +$('cost_basis').value;
+  if (cost_basis > taxable) {
+    cost_basis = taxable;
+    $('cost_basis').value = taxable;
+  }
+  if (cost_basis < 0) {
+    cost_basis = 0;
+    $('cost_basis').value = 0;
+  }
   return {
     filing: $('filing').value,
     risk: $('risk').value,
     age_now: +$('age_now').value,
     age_ret: +$('age_ret').value,
     age_end: +$('age_end').value,
-    taxable: +$('taxable').value,
+    taxable,
     traditional: +$('traditional').value,
     roth: +$('roth').value,
-    cost_basis: +$('cost_basis').value,
+    cost_basis,
     savings: +$('savings').value,
     spending: +$('spending').value,
     ss_age: +$('ss_age').value,
@@ -96,16 +160,18 @@ function readInputs() {
   };
 }
 
-// readOpts() pulls the simulation parameters (how many paths to run, the
-// block length, the random seed, and which combo the user has selected).
+// readOpts() — selected combo lives in JS state, not in dropdowns. If nothing
+// is selected yet (first run), we pass EqualWeight/TradFirst as a placeholder
+// so the engine can compute the fan-chart data; render() will then replace
+// the selection with the top-ranked combo before painting the hero.
 function readOpts() {
   return {
     paths: +$('pathCount').value,
     blockLen: 3,
     seed: 42,
     model: $('returnModel').value,    // 'bootstrap' or 'markov'
-    selAlloc: $('alloc').value,
-    selWD: $('wd').value,
+    selAlloc: selectedCombo ? selectedCombo.alloc : 'EqualWeight',
+    selWD: selectedCombo ? selectedCombo.wd : 'TradFirst',
   };
 }
 
@@ -138,9 +204,12 @@ function ensureWorker() {
     const m = e.data;
     if (m.type === 'progress') {
       $('progressBar').style.width = m.pct + '%';
-      $('overlaySub').textContent = m.combo
-        ? `Running ${ALLOC_LABELS[m.combo.split('_')[0]] || m.combo.split('_')[0]}, ${WD_LABELS[m.combo.split('_').slice(1).join('_')] || m.combo.split('_')[1]}`
-        : m.stage;
+      if (m.combo) {
+        const [a, w] = splitComboKey(m.combo);
+        $('overlaySub').textContent = `Running ${allocLabel(a)}, ${wdLabel(w)}`;
+      } else {
+        $('overlaySub').textContent = m.stage;
+      }
     } else if (m.type === 'result') {
       lastResult = m;
       try { render(m); }
@@ -158,6 +227,18 @@ function ensureWorker() {
 }
 
 function runSim() {
+  const missing = validateInputs();
+  if (missing.length > 0) {
+    alert('Please fill in all required client fields before running the simulation.\n\nMissing or invalid: ' + missing.join(', '));
+    for (const id of missing) {
+      const el = $(id);
+      if (el && el.focus) { el.focus(); break; }
+    }
+    return;
+  }
+  // Clear the cached selection so that after this run we default to the new
+  // top-ranked combo. Otherwise stale selection persists across reruns.
+  selectedCombo = null;
   $('overlay').classList.remove('hidden');
   $('overlayTitle').textContent = 'Running';
   $('overlaySub').textContent = 'Resampling paths';
@@ -194,25 +275,53 @@ function rankCombos(combos) {
 // page. This is the equivalent of all the formulas on the Excel "Dashboard"
 // sheet recalculating after you change an input.
 function render(m) {
-  const opts = readOpts();
-  const sel = `${opts.selAlloc}_${opts.selWD}`;
-  const combo = m.combos[sel];
   const ranked = rankCombos(m.combos);
   const top = ranked[0];
+  const [topA, topW] = splitComboKey(top.key);
+
+  // Strategies are an OUTPUT, not an input. On first render after each new
+  // simulation, default the displayed combo to the top-ranked one. The user
+  // can override by clicking a heatmap cell or table row.
+  if (!selectedCombo) {
+    selectedCombo = { alloc: topA, wd: topW };
+  }
+  const opts = readOpts();
+  const sel = `${opts.selAlloc}_${opts.selWD}`;
+  const combo = m.combos[sel] || m.combos[top.key];  // fallback to top if sel missing
+
+  // Defensive label lookups handled by allocLabel/wdLabel helpers.
+  const topAllocLabel = allocLabel(topA);
+  const topWDLabel = wdLabel(topW);
 
   // Hero
-  $('heroAlloc').textContent = ALLOC_LABELS[opts.selAlloc];
-  $('heroWD').textContent = WD_LABELS[opts.selWD];
+  $('heroAlloc').textContent = allocLabel(opts.selAlloc);
+  $('heroWD').textContent = wdLabel(opts.selWD);
+  $('heroEyebrow').textContent = sel === top.key ? 'Recommended strategy (top-ranked by decision rule)' : 'Currently viewing — click a cell below to switch';
   $('heroNotes').textContent = combo.success >= 0.95
     ? 'Clears the 95% threshold. P10 and tax efficiency drive the ranking below.'
     : combo.success >= 0.90
     ? 'Below the 95% threshold. Consider a more conservative withdrawal order or a higher-success allocation.'
-    : 'High depletion risk. Not appropriate as a primary recommendation.';
+    : combo.success > 0
+    ? 'High depletion risk. Not appropriate as a primary recommendation.'
+    : 'Every Monte Carlo path depleted before plan end. The plan as entered is not feasible with this strategy. Try lower spending, more savings, or a different withdrawal order.';
 
   if (top.key !== sel) {
-    $('heroRecommend').innerHTML = `Top-ranked by the decision rule: <span class="recommend-pill">${ALLOC_LABELS[top.key.split('_')[0]]}, ${WD_LABELS[top.key.split('_').slice(1).join('_')]}</span> at ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10`;
+    $('heroRecommend').innerHTML = `<span class="recommend-pill">★ Top-ranked: ${topAllocLabel}, ${topWDLabel}</span> &nbsp; ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Click any cell in the matrix below to view a different combination.`;
+  } else if (top.success >= 0.90) {
+    $('heroRecommend').innerHTML = `<span class="recommend-pill">★ This IS the top-ranked strategy</span>`;
   } else {
-    $('heroRecommend').innerHTML = `<span class="recommend-pill">Top-ranked by the decision rule</span>`;
+    // Special handling: when even the BEST strategy fails to meet planning
+    // standards, surface this prominently instead of pretending it's a win.
+    $('heroRecommend').innerHTML = `<span class="recommend-pill warn-pill">⚠ No strategy meets the 90% success threshold — the plan as entered is too aggressive. Top-ranked is ${topAllocLabel}, ${topWDLabel} at ${fmtPct(top.success)}.</span>`;
+  }
+
+  // Note about trad=0 case: TradFirst and RothFirst can still differ
+  const inp = readInputs();
+  if (inp.traditional === 0) {
+    $('heroTradNote').style.display = '';
+    $('heroTradNote').innerHTML = `Note: with no traditional balance, "Traditional First" effectively drains Taxable→Roth, while "Roth First" drains Roth→Taxable. The two strategies still produce different tax outcomes because LTCG on the taxable account is realized at different points.`;
+  } else {
+    $('heroTradNote').style.display = 'none';
   }
 
   $('kpiSuccess').textContent = fmtPct(combo.success);
@@ -259,12 +368,12 @@ function renderHeatmap(combos, opts, topKey) {
   // Column headers (withdrawal strategies)
   for (const w of WITHDRAWALS) {
     const h = document.createElement('div');
-    h.className = 'hm-head'; h.textContent = WD_LABELS[w];
+    h.className = 'hm-head'; h.textContent = wdLabel(w);
     el.appendChild(h);
   }
   for (const a of ALLOCATIONS) {
     const rh = document.createElement('div');
-    rh.className = 'hm-row-head'; rh.textContent = ALLOC_LABELS[a];
+    rh.className = 'hm-row-head'; rh.textContent = allocLabel(a);
     el.appendChild(rh);
     for (const w of WITHDRAWALS) {
       const key = `${a}_${w}`;
@@ -275,10 +384,10 @@ function renderHeatmap(combos, opts, topKey) {
       const cell = document.createElement('div');
       cell.className = `hm-cell ${cls}${sel}${top}`;
       cell.innerHTML = `<span class="hm-v">${(c.success*100).toFixed(1)}%</span><span class="hm-s">P10 ${fmtMoney(c.p10)}</span>`;
-      cell.title = `${ALLOC_LABELS[a]} × ${WD_LABELS[w]}\nSuccess: ${fmtPct(c.success)}\nP10: ${fmtMoneyFull(c.p10)}\nMedian: ${fmtMoneyFull(c.p50)}\nP90: ${fmtMoneyFull(c.p90)}\nMedian tax: ${fmtMoneyFull(c.median_tax)}`;
+      const isTopForTitle = key === topKey ? '\n★ Top-ranked by the decision rule (success ≥ 95% AND highest P10 floor)\n' : '\n';
+      cell.title = `${allocLabel(a)} × ${wdLabel(w)}${isTopForTitle}Success: ${fmtPct(c.success)}\nP10: ${fmtMoneyFull(c.p10)}\nMedian: ${fmtMoneyFull(c.p50)}\nP90: ${fmtMoneyFull(c.p90)}\nMedian tax: ${fmtMoneyFull(c.median_tax)}\n\nClick to view this combination's details.`;
       cell.onclick = () => {
-        $('alloc').value = a;
-        $('wd').value = w;
+        selectedCombo = { alloc: a, wd: w };
         if (lastResult) render(lastResult);
       };
       el.appendChild(cell);
@@ -408,7 +517,7 @@ function renderAllocDonut(opts) {
     }
     dynamic = true;
   }
-  const labels = ['Stocks', 'Bonds', 'Real estate', 'Commodities'];
+  const labels = ['Stocks', 'Bonds', 'Real estate', 'Gold'];
   const colors = ['#181818', '#a44a2c', '#7a8a6a', '#d8a878'];
   charts.donut = new Chart(ctx, {
     type: 'doughnut',
@@ -445,7 +554,7 @@ function renderAllocDonut(opts) {
 function renderAllocTable(combos, opts, topKey) {
   const tbody = $('allocTable').querySelector('tbody');
   tbody.innerHTML = '';
-  $('allocCmpWD').textContent = WD_LABELS[opts.selWD];
+  $('allocCmpWD').textContent = wdLabel(opts.selWD);
   const rows = ALLOCATIONS.map(a => {
     const c = combos[`${a}_${opts.selWD}`];
     return { alloc: a, ...c };
@@ -459,7 +568,7 @@ function renderAllocTable(combos, opts, topKey) {
     const tr = document.createElement('tr');
     tr.className = `${sel}${isTop}`.trim();
     tr.innerHTML = `
-      <td>${ALLOC_LABELS[r.alloc]}</td>
+      <td>${allocLabel(r.alloc)}</td>
       <td><span class="pill ${cls}">${fmtPct(r.success)}</span></td>
       <td>${fmtMoney(r.p10)}</td>
       <td>${fmtMoney(r.p50)}</td>
@@ -468,7 +577,7 @@ function renderAllocTable(combos, opts, topKey) {
       <td>${fmtPct(r.depletion)}</td>
       <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${(r.p50/maxP50*100).toFixed(0)}%"></div></div></td>
     `;
-    tr.onclick = () => { $('alloc').value = r.alloc; if (lastResult) render(lastResult); };
+    tr.onclick = () => { selectedCombo = { ...selectedCombo, alloc: r.alloc }; if (lastResult) render(lastResult); };
     tr.style.cursor = 'pointer';
     tbody.appendChild(tr);
   }
@@ -480,7 +589,7 @@ function renderAllocTable(combos, opts, topKey) {
 function renderWDTable(combos, opts, topKey) {
   const tbody = $('wdTable').querySelector('tbody');
   tbody.innerHTML = '';
-  $('wdCmpAlloc').textContent = ALLOC_LABELS[opts.selAlloc];
+  $('wdCmpAlloc').textContent = allocLabel(opts.selAlloc);
   const rows = WITHDRAWALS.map(w => {
     const c = combos[`${opts.selAlloc}_${w}`];
     return { wd: w, ...c };
@@ -494,7 +603,7 @@ function renderWDTable(combos, opts, topKey) {
     const tr = document.createElement('tr');
     tr.className = `${sel}${isTop}`.trim();
     tr.innerHTML = `
-      <td>${WD_LABELS[r.wd]}</td>
+      <td>${wdLabel(r.wd)}</td>
       <td><span class="pill ${cls}">${fmtPct(r.success)}</span></td>
       <td>${fmtMoney(r.p10)}</td>
       <td>${fmtMoney(r.p50)}</td>
@@ -503,7 +612,7 @@ function renderWDTable(combos, opts, topKey) {
       <td>${fmtPct(r.depletion)}</td>
       <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${(r.p50/maxP50*100).toFixed(0)}%"></div></div></td>
     `;
-    tr.onclick = () => { $('wd').value = r.wd; if (lastResult) render(lastResult); };
+    tr.onclick = () => { selectedCombo = { ...selectedCombo, wd: r.wd }; if (lastResult) render(lastResult); };
     tr.style.cursor = 'pointer';
     tbody.appendChild(tr);
   }
@@ -520,12 +629,19 @@ function renderWDTable(combos, opts, topKey) {
 //     keystroke — that would be expensive and disorienting.
 $('runBtn').onclick = runSim;
 
-// Re-render (no full re-sim) when selection changes
-['alloc','wd'].forEach(id => {
-  $(id).addEventListener('change', () => {
-    if (lastResult) render(lastResult);
-  });
-});
+// Save Report: open the browser's print dialog. The print stylesheet hides
+// non-essential UI (sidebar form, run button) so the result is a clean PDF.
+$('saveBtn').onclick = () => {
+  if (!lastResult) {
+    alert('Run a simulation first, then click Save Report.');
+    return;
+  }
+  window.print();
+};
+
+// Strategies are an OUTPUT, not an input — selection happens via clicks on
+// the heatmap and comparison tables, wired in renderHeatmap/renderAllocTable/
+// renderWDTable. No dropdown listeners needed.
 
 // Mark the Run button as "dirty" when client-profile inputs change, so the user
 // knows their edits haven't been applied yet. The run only fires on click.
@@ -533,17 +649,40 @@ const reSimInputs = ['filing','risk','age_now','age_ret','age_end','taxable','tr
 function markDirty() {
   const btn = $('runBtn');
   btn.classList.add('dirty');
-  btn.textContent = 'Apply Changes';
+  btn.textContent = 'Apply Changes ▶';
+  // Also surface a dirty banner so users notice results are stale.
+  let banner = document.getElementById('dirtyBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'dirtyBanner';
+    banner.className = 'dirty-banner';
+    banner.textContent = 'Inputs changed — click "Apply Changes" to rerun the simulation. The numbers below reflect the previous inputs.';
+    document.body.insertBefore(banner, document.querySelector('main'));
+  }
+  banner.style.display = '';
 }
 function markClean() {
   const btn = $('runBtn');
   btn.classList.remove('dirty');
   btn.textContent = 'Run Simulation';
+  const banner = document.getElementById('dirtyBanner');
+  if (banner) banner.style.display = 'none';
 }
 reSimInputs.forEach(id => {
   $(id).addEventListener('input', markDirty);
   $(id).addEventListener('change', markDirty);
 });
 
-// Initial run
-runSim();
+// Live cap on cost_basis: cannot exceed the current taxable balance.
+function capCostBasis() {
+  const tx = +$('taxable').value || 0;
+  const cb = +$('cost_basis').value || 0;
+  if (cb > tx) $('cost_basis').value = tx;
+  if (cb < 0) $('cost_basis').value = 0;
+}
+$('taxable').addEventListener('input', capCostBasis);
+$('cost_basis').addEventListener('input', capCostBasis);
+$('cost_basis').addEventListener('blur', capCostBasis);
+
+// Form starts blank — no auto-run. User fills in the client info and clicks
+// Run Simulation. The hero shows an empty-state message until results arrive.

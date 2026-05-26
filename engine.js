@@ -303,20 +303,22 @@ function withdraw(strategy, need, trad, tax, taxBasis, roth, age) {
     wR = Math.min(remaining, roth); remaining -= wR;
   }
 
-  // RMD enforcement
+  // RMD enforcement: if strategy under-withdrew from Trad relative to the IRS
+  // RMD, top up Trad. The surplus (RMD that wasn't needed for spending) is
+  // returned to the caller, which moves it into the taxable account after tax.
+  let rmdSurplus = 0;
   if (age >= RMD_AGE && trad > 0) {
     const f = RMD_FACTORS[Math.min(age, 115)] || RMD_FACTORS[115];
     const rmd = trad / f;
     if (wT < rmd) {
-      // Top up Trad withdrawal to RMD; the extra cash isn't needed for spending,
-      // but the IRS forces it. Push surplus into Taxable (after tax).
       const extra = Math.min(rmd, trad) - wT;
       wT += extra;
+      rmdSurplus = extra;  // this much got withdrawn beyond what spending needed
     }
   }
 
   const basisConsumed = wX * basisRatio;
-  return [wT, wX, wR, basisConsumed];
+  return [wT, wX, wR, basisConsumed, rmdSurplus];
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +373,7 @@ function simulatePath(inp, allocStrat, wdStrat, returns, pIdx, nYears, recordYea
 
     let wT = 0, wX = 0, wR = 0, taxPaid = 0, basisConsumed = 0;
     let ssInc = 0;
+    let rmdSurplus = 0;
 
     if (!retired) {
       // Accumulation: add savings to taxable, basis grows dollar-for-dollar.
@@ -381,7 +384,7 @@ function simulatePath(inp, allocStrat, wdStrat, returns, pIdx, nYears, recordYea
       // Retirement: withdraw to fund spending. SS turns on at ss_age.
       if (age >= inp.ss_age) ssInc = inp.ss_amt * cpiPrev;
       const gross = Math.max(0, spendNom - ssInc); // SS offsets gross withdrawal need
-      [wT, wX, wR, basisConsumed] = withdraw(wdStrat, gross, trad, tax, taxBasis, roth, age);
+      [wT, wX, wR, basisConsumed, rmdSurplus] = withdraw(wdStrat, gross, trad, tax, taxBasis, roth, age);
 
       // Tax: ordinary = wTrad + taxable_SS; LTCG = wX - basisConsumed
       const ssTaxable = ssTaxablePortion(ssInc, wT);
@@ -396,6 +399,15 @@ function simulatePath(inp, allocStrat, wdStrat, returns, pIdx, nYears, recordYea
       tax  = Math.max(0, tax  - wX);
       roth = Math.max(0, roth - wR);
       taxBasis = Math.max(0, taxBasis - basisConsumed);
+
+      // RMD surplus: forced trad withdrawal beyond what spending needed lands
+      // in the taxable account (after-tax money). The tax on it was already
+      // included in taxPaid via the wT route. We add gross to taxable; the
+      // tax is paid from taxable below, so net cash flow is correct.
+      if (rmdSurplus > 0) {
+        tax += rmdSurplus;
+        taxBasis += rmdSurplus;  // after-tax money, full basis
+      }
 
       // Pay tax out of taxable account (if possible, else trad)
       if (tax >= taxPaid) { tax -= taxPaid; taxBasis = Math.max(0, taxBasis - taxPaid * (taxBasis>0?Math.min(1,taxBasis/(tax+taxPaid)):0)); }

@@ -29,7 +29,10 @@
   <div class="brand">
     <div class="brand-text">
       <div class="brand-name">Retirement Strategy Studio</div>
-      <div class="brand-sub">Bootstrap MC, 1928 to 2024</div>
+      <div class="brand-sub" title="The Monte Carlo engine resamples actual US asset returns from 1928 to 2024 (97 years of Damodaran data) to manufacture thousands of possible future return sequences.">
+        Bootstrap Monte Carlo using 1928-2024 historical returns
+        <span class="info-i" title="Each Monte Carlo path is built by concatenating random 3-year blocks of historical asset returns drawn from the 97-year sample. This preserves crash sequences (1930-32 stays a unit, 2008 stays a unit) instead of mixing them randomly.">i</span>
+      </div>
     </div>
   </div>
   <div class="topbar-actions">
@@ -49,6 +52,7 @@
       </select>
     </label>
     <button id="runBtn" class="btn-primary">Run Simulation</button>
+    <button id="saveBtn" class="btn-secondary" title="Open a printer-friendly view of the current results (save as PDF from your browser's print dialog).">Save Report</button>
   </div>
 </header>
 
@@ -64,60 +68,44 @@
           <select id="filing"><option>Single</option></select></div>
         <div class="field"><label>Risk tolerance</label>
           <select id="risk">
+            <option value="">— select —</option>
             <option>Conservative</option>
-            <option selected>Moderate</option>
+            <option>Moderate</option>
             <option>Aggressive</option>
           </select></div>
         <div class="grid2">
-          <div class="field"><label>Current age</label><input id="age_now" type="number" value="44"></div>
-          <div class="field"><label>Retire age</label><input id="age_ret" type="number" value="66"></div>
+          <div class="field"><label>Current age</label><input id="age_now" type="number" placeholder="44"></div>
+          <div class="field"><label>Retire age</label><input id="age_ret" type="number" placeholder="66"></div>
         </div>
-        <div class="field"><label>Plan end age</label><input id="age_end" type="number" value="105"></div>
+        <div class="field"><label>Plan end age</label><input id="age_end" type="number" placeholder="105"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-h">Balances</div>
       <div class="card-b">
-        <div class="field"><label>Taxable</label><input id="taxable" type="number" value="250000"></div>
-        <div class="field"><label>Traditional</label><input id="traditional" type="number" value="400010"></div>
-        <div class="field"><label>Roth</label><input id="roth" type="number" value="100000"></div>
-        <div class="field"><label>Taxable cost basis</label><input id="cost_basis" type="number" value="200000"></div>
+        <div class="field"><label>Taxable</label><input id="taxable" type="number" placeholder="0"></div>
+        <div class="field"><label>Traditional</label><input id="traditional" type="number" placeholder="0"></div>
+        <div class="field"><label>Roth</label><input id="roth" type="number" placeholder="0"></div>
+        <div class="field"><label>Taxable cost basis</label><input id="cost_basis" type="number" placeholder="0"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-h">Cash flow</div>
       <div class="card-b">
-        <div class="field"><label>Annual savings</label><input id="savings" type="number" value="30000"></div>
-        <div class="field"><label>Retirement spending</label><input id="spending" type="number" value="80050"></div>
-        <div class="grid2">
-          <div class="field"><label>SS age</label><input id="ss_age" type="number" value="67"></div>
-          <div class="field"><label>SS amount</label><input id="ss_amt" type="number" value="30000"></div>
+        <div class="field">
+          <label>Annual savings <span class="info-i" title="Pre-tax dollars added to taxable brokerage each year while still working. Stops at retirement age.">i</span></label>
+          <input id="savings" type="number" placeholder="0">
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-h">Strategy</div>
-      <div class="card-b">
-        <div class="field"><label>Allocation</label>
-          <select id="alloc">
-            <option>60_40</option>
-            <option selected>EqualWeight</option>
-            <option>RiskParity</option>
-            <option>RobustRP</option>
-            <option>GlidePath</option>
-            <option>AgeBalanceAware</option>
-          </select></div>
-        <div class="field"><label>Withdrawal</label>
-          <select id="wd">
-            <option selected>TradFirst</option>
-            <option>RothFirst</option>
-            <option>TaxableFirst</option>
-            <option>Proportional</option>
-            <option>TaxAware</option>
-          </select></div>
+        <div class="field">
+          <label>Retirement spending <span class="info-i" title="Annual spending in today's dollars (real, pre-tax). The engine inflates this each year by CPI and pulls from accounts to fund it; the income tax owed is separately computed and paid out of taxable.">i</span></label>
+          <input id="spending" type="number" placeholder="0">
+        </div>
+        <div class="grid2">
+          <div class="field"><label>SS age</label><input id="ss_age" type="number" placeholder="67"></div>
+          <div class="field"><label>SS amount</label><input id="ss_amt" type="number" placeholder="0"></div>
+        </div>
       </div>
     </div>
 
@@ -134,23 +122,25 @@
 
     <div class="hero">
       <div class="hero-l">
+        <div class="hero-eyebrow" id="heroEyebrow">Currently viewing</div>
         <div class="hero-title"><span id="heroAlloc">—</span>, <span id="heroWD">—</span></div>
-        <div class="hero-sub" id="heroNotes">Run a simulation to see results.</div>
+        <div class="hero-sub" id="heroNotes">Enter client info on the left and click "Run Simulation" to see the recommended strategy.</div>
         <div class="hero-recommend" id="heroRecommend"></div>
+        <div class="hero-trad-note" id="heroTradNote" style="display:none;"></div>
       </div>
       <div class="hero-r">
-        <div class="kpi">
-          <div class="kpi-l">Success probability</div>
-          <div class="kpi-v" id="kpiSuccess">—</div>
+        <div class="kpi kpi-hero">
+          <div class="kpi-l">Probability you don't run out of money <span class="info-i" title="The fraction of Monte Carlo paths in which the client never depletes all three accounts before plan end age. ≥95% is the planning standard.">i</span></div>
+          <div class="kpi-v kpi-v-big" id="kpiSuccess">—</div>
           <div class="kpi-bar"><div id="kpiSuccessBar"></div></div>
         </div>
         <div class="kpi">
-          <div class="kpi-l">Median terminal real wealth</div>
+          <div class="kpi-l">Median terminal real wealth <span class="info-i" title="The middle outcome across all Monte Carlo paths. Half of futures end with more than this, half with less. Expressed in today's dollars (inflation-adjusted).">i</span></div>
           <div class="kpi-v" id="kpiMedian">—</div>
           <div class="kpi-sub" id="kpiMedianSub">P10 — , P90 —</div>
         </div>
         <div class="kpi">
-          <div class="kpi-l">Median lifetime tax</div>
+          <div class="kpi-l">Median lifetime tax <span class="info-i" title="Total federal income tax paid across all retirement years for the median path, in today's dollars (real). Does not include state, AMT, IRMAA, or NIIT.">i</span></div>
           <div class="kpi-v" id="kpiTax">—</div>
           <div class="kpi-sub">Real dollars, federal only</div>
         </div>
@@ -199,7 +189,7 @@
       <div class="table-scroll">
         <table class="data-table" id="allocTable">
           <thead><tr>
-            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th>Median, scaled to best</th>
+            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th title="Bar length is this row's median terminal wealth divided by the largest median in the table (the longest bar = the strategy with the highest median outcome). It is a visual eyeball-rank, NOT a probability or absolute scale.">Median vs. best in table</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -213,7 +203,7 @@
       <div class="table-scroll">
         <table class="data-table" id="wdTable">
           <thead><tr>
-            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th>Median, scaled to best</th>
+            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th title="Bar length is this row's median terminal wealth divided by the largest median in the table (the longest bar = the strategy with the highest median outcome). It is a visual eyeball-rank, NOT a probability or absolute scale.">Median vs. best in table</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -228,7 +218,7 @@
 
       <div class="meth-section">
         <div class="meth-label">Where the data comes from</div>
-        <p>Annual asset returns, 1928 to 2024 (97 years), from Aswath Damodaran's <span class="ink-pill">histretSP.xls</span> (NYU Stern, January 2026 update). Stocks are S&amp;P 500 total return including dividends. Bonds are 10-year US Treasury total return. Real estate uses Damodaran's REIT series. Commodities use gold as a proxy, since GSCI data does not extend pre-1970. Inflation is CPI-U. Federal tax brackets, standard deductions, LTCG thresholds, Social Security provisional-income thresholds, and the Uniform Lifetime Table RMD divisors are 2025 IRS figures, Single filer.</p>
+        <p>Annual asset returns, 1928 to 2024 (97 years), from Aswath Damodaran's <span class="ink-pill">histretSP.xls</span> (NYU Stern, January 2026 update). Stocks are S&amp;P 500 total return including dividends. Bonds are 10-year US Treasury total return. Real estate uses Damodaran's REIT series. The fourth asset is gold (LBMA spot), used as a long-history alternative-asset proxy because broad-commodity index data does not extend pre-1970. Inflation is CPI-U. Federal tax brackets, standard deductions, LTCG thresholds, Social Security provisional-income thresholds, and the Uniform Lifetime Table RMD divisors are 2025 IRS figures, Single filer.</p>
       </div>
 
       <div class="meth-section">
@@ -249,7 +239,7 @@
 
       <div class="meth-section">
         <div class="meth-label">Allocation strategies</div>
-        <p>60/40 is the static benchmark, ignoring real estate and commodities. Equal Weight holds 25% in each of stocks, bonds, real estate, and commodities. Risk Parity uses inverse-volatility weights (stocks 18%, bonds 55%, real estate 15%, commodities 12%). Robust Risk Parity adjusts those weights for cross-asset correlations, mainly trimming the stocks-plus-real-estate cluster. Glide Path holds equity equal to max(20%, 110 minus age) percent, scaled by a risk-tolerance multiplier (0.8 / 1.0 / 1.2 for Conservative / Moderate / Aggressive), with the remainder in bonds. Age-Balance Aware uses the same age-based glide but reduces equity further when the spending-to-balance burden is high, and diversifies the equity sleeve across stocks (65%), real estate (20%), and commodities (15%).</p>
+        <p>60/40 is the static benchmark, ignoring real estate and gold. Equal Weight holds 25% in each of stocks, bonds, real estate, and gold. Risk Parity uses inverse-volatility weights (stocks 18%, bonds 55%, real estate 15%, gold 12%). Robust Risk Parity adjusts those weights for cross-asset correlations, mainly trimming the stocks-plus-real-estate cluster. Glide Path holds equity equal to max(20%, 110 minus age) percent, scaled by a risk-tolerance multiplier (0.8 / 1.0 / 1.2 for Conservative / Moderate / Aggressive), with the remainder in bonds. Age-Balance Aware uses the same age-based glide but reduces equity further when the spending-to-balance burden is high, and diversifies the equity sleeve across stocks (65%), real estate (20%), and gold (15%).</p>
       </div>
 
       <div class="meth-section">
