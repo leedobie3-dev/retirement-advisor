@@ -110,28 +110,44 @@ const WD_REASONS = {
 // Identify WHY the top combo beat the runner-up. Returns a short HTML string
 // citing the specific tiebreaker (success / P10 / tax / p50) that decided it,
 // plus what the chosen allocation and withdrawal strategy actually do.
+//
+// Three correctness rules so the explanation never lies:
+//   1. Thresholds match the displayed precision: success at 2 decimals
+//      (0.005pp), dollar metrics at relative 0.5% with a $1k absolute floor.
+//   2. A metric only "wins" if the difference is MEANINGFUL — purely abs
+//      thresholds like "$2k more on a $1.2M floor" don't qualify.
+//   3. Numeric comparisons use fmtMoneyFull (e.g., $1,200,383) so the user
+//      never sees "$1.20M vs $1.20M" again.
 function explainTopRank(top, ranked) {
   const runner = ranked[1];
   if (!runner) return '';
   const [topA, topW] = splitComboKey(top.key);
   const [runA, runW] = splitComboKey(runner.key);
   const runnerName = `${allocLabel(runA)} + ${wdLabel(runW)}`;
-
-  // Which tiebreaker actually decided this? Threshold matches the heatmap's
-  // 2-decimal display precision (0.0001 = 0.01pp). Anything below that is
-  // a tie at the precision shown to the user.
   const pctFull = (n) => `${(n*100).toFixed(2)}%`;
+
+  const SUCCESS_EPS = 0.00005;  // 0.005pp — below 2-decimal display precision
+  // Dollar threshold: 0.5% of the reference value OR $1k absolute, whichever is larger.
+  const meaningful = (delta, ref) => Math.abs(delta) > Math.max(1000, Math.abs(ref) * 0.005);
+
+  const dSuccess = top.success - runner.success;
+  const dP10 = top.p10 - runner.p10;
+  const dTax = runner.median_tax - top.median_tax;  // tax: lower is better
+  const dP50 = top.p50 - runner.p50;
+
   let reason;
-  if (Math.abs(top.success - runner.success) > 0.0001) {
+  if (Math.abs(dSuccess) >= SUCCESS_EPS) {
     reason = `<strong>higher survival rate</strong> than the next-best <em>${runnerName}</em> (${pctFull(top.success)} vs ${pctFull(runner.success)})`;
-  } else if (top.p10 - runner.p10 > 1000) {
-    reason = `same survival rate as <em>${runnerName}</em>, but a <strong>stronger bad-case floor</strong> (P10 ${fmtMoney(top.p10)} vs ${fmtMoney(runner.p10)})`;
-  } else if (runner.median_tax - top.median_tax > 1000) {
-    reason = `tied with <em>${runnerName}</em> on survival and P10, but <strong>lower lifetime tax</strong> (${fmtMoney(top.median_tax)} vs ${fmtMoney(runner.median_tax)})`;
-  } else if (top.p50 - runner.p50 > 1000) {
-    reason = `essentially tied with <em>${runnerName}</em> on all primary metrics; wins on <strong>higher median terminal wealth</strong> (${fmtMoney(top.p50)} vs ${fmtMoney(runner.p50)})`;
+  } else if (meaningful(dP10, top.p10) && dP10 > 0) {
+    reason = `same survival rate as <em>${runnerName}</em>, but a <strong>stronger bad-case floor</strong> (P10 ${fmtMoneyFull(top.p10)} vs ${fmtMoneyFull(runner.p10)})`;
+  } else if (meaningful(dTax, top.median_tax) && dTax > 0) {
+    reason = `tied with <em>${runnerName}</em> on survival and P10, but <strong>lower lifetime tax</strong> (${fmtMoneyFull(top.median_tax)} vs ${fmtMoneyFull(runner.median_tax)})`;
+  } else if (meaningful(dP50, top.p50) && dP50 > 0) {
+    reason = `essentially tied with <em>${runnerName}</em> on all primary metrics; wins on <strong>higher median terminal wealth</strong> (${fmtMoneyFull(top.p50)} vs ${fmtMoneyFull(runner.p50)})`;
   } else {
-    reason = `essentially tied with <em>${runnerName}</em> on every metric — the choice is largely indifferent`;
+    // All metrics are within their meaningful-difference thresholds. Be
+    // honest about it — the rank is decided by a knife-edge tiebreaker.
+    reason = `<strong>essentially tied with</strong> <em>${runnerName}</em> on every metric (survival ${pctFull(top.success)} vs ${pctFull(runner.success)}, P10 ${fmtMoneyFull(top.p10)} vs ${fmtMoneyFull(runner.p10)}). The two combinations are interchangeable; the ranking algorithm broke the tie on a knife edge`;
   }
 
   const allocWhy = ALLOC_REASONS[topA] || '';
