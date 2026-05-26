@@ -89,6 +89,53 @@ function splitComboKey(key) {
 function allocLabel(k) { return (k && ALLOC_LABELS[k]) || k || '—'; }
 function wdLabel(k) { return (k && WD_LABELS[k]) || k || '—'; }
 
+// One-sentence description of what each allocation strategy actually does.
+// Used by explainTopRank() to surface the "why" behind the top recommendation.
+const ALLOC_REASONS = {
+  '60_40': 'is the static 60% stocks / 40% bonds baseline — simple, well-studied, no exotic assets.',
+  'EqualWeight': 'holds 25% each in stocks, bonds, real estate, and gold — trades some return for diversification.',
+  'RiskParity': 'sizes positions by inverse volatility (~18% stocks, 55% bonds, 15% real estate, 12% gold), balancing risk contribution across asset classes.',
+  'RobustRP': 'is risk parity adjusted for cross-asset correlations, trimming the equity-plus-real-estate cluster.',
+  'GlidePath': 'reduces equity as the client ages (target ≈ max(20%, 110 − age)% × risk tolerance), with the remainder in bonds.',
+  'AgeBalanceAware': 'reduces equity further when the spending-to-balance ratio is high, and diversifies the equity sleeve into real estate (20%) and gold (15%) — defensive when accounts are stressed.',
+};
+const WD_REASONS = {
+  'TradFirst': 'drains pre-tax accounts first while ordinary income is low, fills lower brackets early, and leaves the Roth to compound tax-free longest.',
+  'RothFirst': 'spends the tax-free Roth first, preserving pre-tax accounts (which RMDs will force out anyway).',
+  'TaxableFirst': 'spends the brokerage account first to defer the tax-advantaged accounts as long as possible — the conventional rule of thumb.',
+  'Proportional': 'draws pro-rata across all three account types each year, evening out tax exposure over time.',
+  'TaxAware': 'fills the 12% bracket from traditional, then takes long-term capital gains from taxable, then more traditional, with Roth as the final reserve.',
+};
+
+// Identify WHY the top combo beat the runner-up. Returns a short HTML string
+// citing the specific tiebreaker (success / P10 / tax / p50) that decided it,
+// plus what the chosen allocation and withdrawal strategy actually do.
+function explainTopRank(top, ranked) {
+  const runner = ranked[1];
+  if (!runner) return '';
+  const [topA, topW] = splitComboKey(top.key);
+  const [runA, runW] = splitComboKey(runner.key);
+  const runnerName = `${allocLabel(runA)} + ${wdLabel(runW)}`;
+
+  // Which tiebreaker actually decided this?
+  let reason;
+  if (Math.abs(top.success - runner.success) > 0.005) {
+    reason = `<strong>higher survival rate</strong> than the next-best <em>${runnerName}</em> (${fmtPct(top.success)} vs ${fmtPct(runner.success)})`;
+  } else if (top.p10 - runner.p10 > 1000) {
+    reason = `same survival rate as <em>${runnerName}</em>, but a <strong>stronger bad-case floor</strong> (P10 ${fmtMoney(top.p10)} vs ${fmtMoney(runner.p10)})`;
+  } else if (runner.median_tax - top.median_tax > 1000) {
+    reason = `tied with <em>${runnerName}</em> on survival and P10, but <strong>lower lifetime tax</strong> (${fmtMoney(top.median_tax)} vs ${fmtMoney(runner.median_tax)})`;
+  } else if (top.p50 - runner.p50 > 1000) {
+    reason = `essentially tied with <em>${runnerName}</em> on all primary metrics; wins on <strong>higher median terminal wealth</strong> (${fmtMoney(top.p50)} vs ${fmtMoney(runner.p50)})`;
+  } else {
+    reason = `essentially tied with <em>${runnerName}</em> on every metric — the choice is largely indifferent`;
+  }
+
+  const allocWhy = ALLOC_REASONS[topA] || '';
+  const wdWhy = WD_REASONS[topW] || '';
+  return `${reason}. <strong>${allocLabel(topA)}</strong> ${allocWhy} <strong>${wdLabel(topW)}</strong> ${wdWhy}`;
+}
+
 // ---------- State ----------
 let lastResult = null;
 let worker = null;
@@ -305,18 +352,24 @@ function render(m) {
     ? 'High depletion risk. Not appropriate as a primary recommendation.'
     : 'Every Monte Carlo path depleted before plan end. The plan as entered is not feasible with this strategy. Try lower spending, more savings, or a different withdrawal order.';
 
+  const why = explainTopRank(top, ranked);
+
   if (top.success === 0) {
-    // ALL plans fail — every path depletes. The ranking algorithm falls
-    // through to "lowest lifetime tax" as the tiebreaker, but that's not a
-    // meaningful "best" in any survival sense. Be honest about it.
-    $('heroRecommend').innerHTML = `<span class="recommend-pill warn-pill">⚠ All strategies fail. Among failed plans, "${topAllocLabel} + ${topWDLabel}" loses the least to taxes before depleting — useful only if you want to minimize the bleed. <strong>Not a viable recommendation.</strong></span>`;
+    $('heroRecommend').innerHTML =
+      `<span class="recommend-pill warn-pill">⚠ All strategies fail. Among failed plans, "${topAllocLabel} + ${topWDLabel}" loses the least to taxes before depleting — useful only if you want to minimize the bleed. <strong>Not a viable recommendation.</strong></span>` +
+      `<div class="rec-why"><strong>Why this one (among failed plans):</strong> ${why}</div>`;
   } else if (top.success < 0.90) {
-    // The best plan beats zero but still misses the planning standard.
-    $('heroRecommend').innerHTML = `<span class="recommend-pill warn-pill">⚠ No strategy meets the 90% success threshold — the plan as entered is too aggressive. Top-ranked is ${topAllocLabel}, ${topWDLabel} at ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10.</span>`;
+    $('heroRecommend').innerHTML =
+      `<span class="recommend-pill warn-pill">⚠ Best of a bad batch: <strong>${topAllocLabel}, ${topWDLabel}</strong> — ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Below the 90% planning standard, so this is the least-bad option, not a safe plan.</span>` +
+      `<div class="rec-why"><strong>Why this one:</strong> ${why}</div>`;
   } else if (top.key !== sel) {
-    $('heroRecommend').innerHTML = `<span class="recommend-pill">★ Top-ranked: ${topAllocLabel}, ${topWDLabel}</span> &nbsp; ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Click any cell in the matrix below to view a different combination.`;
+    $('heroRecommend').innerHTML =
+      `<span class="recommend-pill">★ Top-ranked: <strong>${topAllocLabel}, ${topWDLabel}</strong></span> &nbsp; ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Click any cell in the matrix below to view a different combination.` +
+      `<div class="rec-why"><strong>Why this one:</strong> ${why}</div>`;
   } else {
-    $('heroRecommend').innerHTML = `<span class="recommend-pill">★ This IS the top-ranked strategy</span>`;
+    $('heroRecommend').innerHTML =
+      `<span class="recommend-pill">★ This IS the top-ranked strategy</span>` +
+      `<div class="rec-why"><strong>Why this one:</strong> ${why}</div>`;
   }
 
   // Note about trad=0 case: TradFirst and RothFirst can still differ

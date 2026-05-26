@@ -153,3 +153,58 @@ if (allFails) {
     console.log(`  ${c.k}: tax=$${Math.round(c.median_tax).toLocaleString()}, p50=$${Math.round(c.p50).toLocaleString()}`);
   }
 }
+
+console.log('\n=== Test 8: explainTopRank output for different scenarios ===');
+// Inline the logic since we can't import from app.js (DOM-bound)
+const ALLOC_LABELS = {'60_40':'60/40 Classic','EqualWeight':'Equal Weight','RiskParity':'Risk Parity','RobustRP':'Robust Risk Parity','GlidePath':'Glide Path','AgeBalanceAware':'Age-Balance Aware'};
+const WD_LABELS = {'TradFirst':'Traditional First','RothFirst':'Roth First','TaxableFirst':'Taxable First','Proportional':'Proportional','TaxAware':'Tax-Aware'};
+const ALLOC_KEYS = ['60_40','EqualWeight','RiskParity','RobustRP','GlidePath','AgeBalanceAware'];
+function splitComboKey(key) {
+  for (const a of ALLOC_KEYS) if (key.startsWith(a + '_')) return [a, key.slice(a.length + 1)];
+  return key.split('_');
+}
+function fmtMoney(n){if(!isFinite(n))return'—';const a=Math.abs(n);return n<0?'-':''+(a>=1e9?`$${(a/1e9).toFixed(2)}B`:a>=1e6?`$${(a/1e6).toFixed(2)}M`:a>=1e3?`$${(a/1e3).toFixed(0)}k`:`$${a.toFixed(0)}`)}
+function fmtPct(n){return`${(n*100).toFixed(1)}%`}
+
+function explainTie(top, runner) {
+  const [topA, topW] = splitComboKey(top.key);
+  const [runA, runW] = splitComboKey(runner.key);
+  const runnerName = `${ALLOC_LABELS[runA]} + ${WD_LABELS[runW]}`;
+  if (Math.abs(top.success - runner.success) > 0.005) {
+    return `Higher survival rate vs ${runnerName} (${fmtPct(top.success)} vs ${fmtPct(runner.success)})`;
+  } else if (top.p10 - runner.p10 > 1000) {
+    return `Same survival as ${runnerName}, but stronger P10 floor (${fmtMoney(top.p10)} vs ${fmtMoney(runner.p10)})`;
+  } else if (runner.median_tax - top.median_tax > 1000) {
+    return `Tied with ${runnerName} on survival+P10, lower lifetime tax (${fmtMoney(top.median_tax)} vs ${fmtMoney(runner.median_tax)})`;
+  } else if (top.p50 - runner.p50 > 1000) {
+    return `Tied with ${runnerName} on primary metrics, higher p50 (${fmtMoney(top.p50)} vs ${fmtMoney(runner.p50)})`;
+  }
+  return `Essentially tied with ${runnerName} on every metric`;
+}
+
+function rank(combos) {
+  return Object.entries(combos)
+    .map(([k, v]) => ({ key: k, ...v }))
+    .sort((a, b) => b.success - a.success || b.p10 - a.p10 || a.median_tax - b.median_tax || b.p50 - a.p50);
+}
+
+// Scenario A: comfortable plan — should pick on survival or P10
+console.log('\n[A] Comfortable plan (defaults):');
+r = runSim(DEFAULTS);
+let ranked = rank(r.combos);
+console.log(`  Winner: ${ranked[0].key} (success=${fmtPct(ranked[0].success)}, P10=${fmtMoney(ranked[0].p10)}, tax=${fmtMoney(ranked[0].median_tax)})`);
+console.log(`  Why: ${explainTie(ranked[0], ranked[1])}`);
+
+// Scenario B: tight plan — partial success
+console.log('\n[B] Tight plan (high spending):');
+r = runSim({ ...DEFAULTS, spending: 130000 });
+ranked = rank(r.combos);
+console.log(`  Winner: ${ranked[0].key} (success=${fmtPct(ranked[0].success)}, P10=${fmtMoney(ranked[0].p10)}, tax=${fmtMoney(ranked[0].median_tax)})`);
+console.log(`  Why: ${explainTie(ranked[0], ranked[1])}`);
+
+// Scenario C: failing plan
+console.log('\n[C] Failing plan:');
+r = runSim({ ...DEFAULTS, spending: 200000 });
+ranked = rank(r.combos);
+console.log(`  Winner: ${ranked[0].key} (success=${fmtPct(ranked[0].success)}, P10=${fmtMoney(ranked[0].p10)}, tax=${fmtMoney(ranked[0].median_tax)})`);
+console.log(`  Why: ${explainTie(ranked[0], ranked[1])}`);
