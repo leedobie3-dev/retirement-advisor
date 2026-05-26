@@ -59,8 +59,9 @@ import {
 //   - Does this for every Monte Carlo path (default 10,000).
 //
 // The output is one big array of numbers: for each (path, year) we store five
-// values — stock return, bond return, real-estate return, commodity return,
+// values — stock return, bond return, real-estate return, gold return,
 // inflation rate — which the year-by-year simulator reads later.
+// (Historically the 4th slot was named "commodity"; the data series is gold.)
 // ---------------------------------------------------------------------------
 // Small deterministic RNG so reruns with the same seed give identical paths.
 // (Linear congruential generator; not for cryptography, fine for MC.)
@@ -154,7 +155,7 @@ function markovReturns(nPaths, nYears, seed) {
 // plus the embedded glide-path and age-balance-aware formulas in MCSim_*).
 //
 // Each strategy returns four numbers that sum to 1:
-//     [stocks fraction, bonds fraction, real-estate fraction, commodities fraction]
+//     [stocks fraction, bonds fraction, real-estate fraction, gold fraction]
 //
 // The four "static" strategies (60/40, EqualWeight, RiskParity, RobustRP)
 // always return the same fixed weights from data.js.
@@ -164,7 +165,7 @@ function markovReturns(nPaths, nYears, seed) {
 //                      (110 - age) / 100, scaled by risk multiplier
 //   AgeBalanceAware  — same glide, but cuts equity further when the client's
 //                      spending need is large relative to their balance, and
-//                      diversifies the equity sleeve into RE and commodities
+//                      diversifies the equity sleeve into RE and gold
 // ---------------------------------------------------------------------------
 function weightsFor(strategy, age, totalBal, spendNeed, riskMult) {
   const W = STATIC_WEIGHTS[strategy];
@@ -177,7 +178,7 @@ function weightsFor(strategy, age, totalBal, spendNeed, riskMult) {
     // Equity glides with age, scaled by risk tolerance, reduced if spend/balance burden is high.
     const burden = totalBal > 0 ? Math.min(spendNeed / totalBal, 0.10) : 0.05;
     const eq = Math.max(0.20, Math.min(0.95, ((110 - age) / 100) * riskMult - burden * 2));
-    // Diversify the risk sleeve: 65% stocks, 20% RE, 15% commodities
+    // Diversify the risk sleeve: 65% stocks, 20% RE, 15% gold
     const stk = eq * 0.65, re = eq * 0.20, com = eq * 0.15;
     const bnd = 1 - stk - re - com;
     return [stk, bnd, re, com];

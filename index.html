@@ -52,7 +52,7 @@
       </select>
     </label>
     <button id="runBtn" class="btn-primary">Run Simulation</button>
-    <button id="saveBtn" class="btn-secondary" title="Open a printer-friendly view of the current results (save as PDF from your browser's print dialog).">Save Report</button>
+    <button id="saveBtn" class="btn-secondary" data-tooltip="Open a printer-friendly view of the current results (save as PDF from your browser's print dialog).">Save Report</button>
   </div>
 </header>
 
@@ -189,7 +189,7 @@
       <div class="table-scroll">
         <table class="data-table" id="allocTable">
           <thead><tr>
-            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th title="Bar length is this row's median terminal wealth divided by the largest median in the table (the longest bar = the strategy with the highest median outcome). It is a visual eyeball-rank, NOT a probability or absolute scale.">Median vs. best in table</th>
+            <th>Allocation</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th data-tooltip="Bar length is this row's median terminal wealth divided by the largest median in the table (the longest bar = the strategy with the highest median outcome). It is a visual eyeball-rank, NOT a probability or absolute scale.">Median vs. best in table</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -203,7 +203,7 @@
       <div class="table-scroll">
         <table class="data-table" id="wdTable">
           <thead><tr>
-            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th title="Bar length is this row's median terminal wealth divided by the largest median in the table (the longest bar = the strategy with the highest median outcome). It is a visual eyeball-rank, NOT a probability or absolute scale.">Median vs. best in table</th>
+            <th>Withdrawal</th><th>Success</th><th>P10</th><th>Median</th><th>P90</th><th>Median tax</th><th>Depletion</th><th data-tooltip="Bar length is this row's median terminal wealth divided by the largest median in the table (the longest bar = the strategy with the highest median outcome). It is a visual eyeball-rank, NOT a probability or absolute scale.">Median vs. best in table</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -218,7 +218,7 @@
 
       <div class="meth-section" id="meth-data">
         <div class="meth-label">Where the data comes from</div>
-        <p>Annual asset returns, 1928 to 2024 (97 years), from Aswath Damodaran's <span class="ink-pill">histretSP.xls</span> (NYU Stern, January 2026 update). Stocks are S&amp;P 500 total return including dividends. Bonds are 10-year US Treasury total return. Real estate uses Damodaran's REIT series. The fourth asset is gold (LBMA spot), used as a long-history alternative-asset proxy because broad-commodity index data does not extend pre-1970. Inflation is CPI-U. Federal tax brackets, standard deductions, LTCG thresholds, Social Security provisional-income thresholds, and the Uniform Lifetime Table RMD divisors are 2025 IRS figures, Single filer.</p>
+        <p>Annual asset returns, 1928 to 2024 (97 years), from Aswath Damodaran's <span class="ink-pill">histretSP.xls</span> (NYU Stern, January 2026 update). Stocks are S&amp;P 500 total return including dividends. Bonds are 10-year US Treasury total return. Real estate uses Damodaran's REIT series. The fourth asset is gold (LBMA spot price), chosen as the alternative-asset sleeve because it has the longest continuous price history of any non-stock, non-bond asset. Inflation is CPI-U. Federal tax brackets, standard deductions, LTCG thresholds, Social Security provisional-income thresholds, and the Uniform Lifetime Table RMD divisors are 2025 IRS figures, Single filer.</p>
       </div>
 
       <div class="meth-section" id="meth-models">
@@ -259,7 +259,7 @@
 
       <div class="meth-section" id="meth-caveats">
         <div class="meth-label">Caveats</div>
-        <p>Bootstrap from 1928 to 2024 assumes the future return distribution resembles the historical sample. That is a strong assumption: it embeds the realized US equity premium and bond returns from the post-war era and a particular path of inflation. Real-estate and commodity proxies introduce additional uncertainty. The tax model is a simplification of a complex code and ignores state, AMT, IRMAA, NIIT, and many edge cases. This is decision support, not personalized advice. Use the dashboard to compare strategies and surface tradeoffs; advisor judgment is still required for client-specific factors such as longevity expectation, healthcare reserves, legacy goals, and behavioral risk tolerance.</p>
+        <p>Bootstrap from 1928 to 2024 assumes the future return distribution resembles the historical sample. That is a strong assumption: it embeds the realized US equity premium and bond returns from the post-war era and a particular path of inflation. Real-estate and gold proxies introduce additional uncertainty. The tax model is a simplification of a complex code and ignores state, AMT, IRMAA, NIIT, and many edge cases. This is decision support, not personalized advice. Use the dashboard to compare strategies and surface tradeoffs; advisor judgment is still required for client-specific factors such as longevity expectation, healthcare reserves, legacy goals, and behavioral risk tolerance.</p>
       </div>
     </div>
 
