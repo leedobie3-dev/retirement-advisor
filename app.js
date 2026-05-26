@@ -305,14 +305,18 @@ function render(m) {
     ? 'High depletion risk. Not appropriate as a primary recommendation.'
     : 'Every Monte Carlo path depleted before plan end. The plan as entered is not feasible with this strategy. Try lower spending, more savings, or a different withdrawal order.';
 
-  if (top.key !== sel) {
+  if (top.success === 0) {
+    // ALL plans fail — every path depletes. The ranking algorithm falls
+    // through to "lowest lifetime tax" as the tiebreaker, but that's not a
+    // meaningful "best" in any survival sense. Be honest about it.
+    $('heroRecommend').innerHTML = `<span class="recommend-pill warn-pill">⚠ All strategies fail. Among failed plans, "${topAllocLabel} + ${topWDLabel}" loses the least to taxes before depleting — useful only if you want to minimize the bleed. <strong>Not a viable recommendation.</strong></span>`;
+  } else if (top.success < 0.90) {
+    // The best plan beats zero but still misses the planning standard.
+    $('heroRecommend').innerHTML = `<span class="recommend-pill warn-pill">⚠ No strategy meets the 90% success threshold — the plan as entered is too aggressive. Top-ranked is ${topAllocLabel}, ${topWDLabel} at ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10.</span>`;
+  } else if (top.key !== sel) {
     $('heroRecommend').innerHTML = `<span class="recommend-pill">★ Top-ranked: ${topAllocLabel}, ${topWDLabel}</span> &nbsp; ${fmtPct(top.success)} success, ${fmtMoney(top.p10)} P10. Click any cell in the matrix below to view a different combination.`;
-  } else if (top.success >= 0.90) {
-    $('heroRecommend').innerHTML = `<span class="recommend-pill">★ This IS the top-ranked strategy</span>`;
   } else {
-    // Special handling: when even the BEST strategy fails to meet planning
-    // standards, surface this prominently instead of pretending it's a win.
-    $('heroRecommend').innerHTML = `<span class="recommend-pill warn-pill">⚠ No strategy meets the 90% success threshold — the plan as entered is too aggressive. Top-ranked is ${topAllocLabel}, ${topWDLabel} at ${fmtPct(top.success)}.</span>`;
+    $('heroRecommend').innerHTML = `<span class="recommend-pill">★ This IS the top-ranked strategy</span>`;
   }
 
   // Note about trad=0 case: TradFirst and RothFirst can still differ

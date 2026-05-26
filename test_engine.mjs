@@ -126,3 +126,30 @@ console.log('TaxableFirst (forces RMD topup):', { p50: Math.round(taxableFirstRm
 console.log('(With RMD fix, TaxableFirst should NOT lose the RMD-surplus cash anymore)');
 
 console.log('\n=== Tests done ===');
+
+console.log('\n=== Test 7: All-strategies-fail case ===');
+// Tiny balances + huge spending + no SS → all 30 strategies should hit 0% success
+const failInputs = {
+  ...DEFAULTS,
+  taxable: 1000, traditional: 1000, roth: 1000, cost_basis: 1000,
+  savings: 0, spending: 200000,
+  ss_age: 67, ss_amt: 0,
+  age_now: 60, age_ret: 62, age_end: 95,
+};
+r = runSim(failInputs);
+const allFails = Object.values(r.combos).every(c => c.success === 0);
+console.log('All 30 combos have 0% success:', allFails);
+if (allFails) {
+  // Sort by median tax ascending to see who "wins" the tiebreaker
+  const ranked = Object.entries(r.combos)
+    .map(([k, v]) => ({ k, ...v }))
+    .sort((a, b) => b.success - a.success || b.p10 - a.p10 || a.median_tax - b.median_tax);
+  console.log('Top 3 by tax-tiebreaker:');
+  for (const c of ranked.slice(0, 3)) {
+    console.log(`  ${c.k}: tax=$${Math.round(c.median_tax).toLocaleString()}, p50=$${Math.round(c.p50).toLocaleString()}`);
+  }
+  console.log('Bottom 3 by tax-tiebreaker:');
+  for (const c of ranked.slice(-3)) {
+    console.log(`  ${c.k}: tax=$${Math.round(c.median_tax).toLocaleString()}, p50=$${Math.round(c.p50).toLocaleString()}`);
+  }
+}
