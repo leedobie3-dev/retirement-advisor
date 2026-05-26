@@ -117,10 +117,13 @@ function explainTopRank(top, ranked) {
   const [runA, runW] = splitComboKey(runner.key);
   const runnerName = `${allocLabel(runA)} + ${wdLabel(runW)}`;
 
-  // Which tiebreaker actually decided this?
+  // Which tiebreaker actually decided this? Threshold matches the heatmap's
+  // 2-decimal display precision (0.0001 = 0.01pp). Anything below that is
+  // a tie at the precision shown to the user.
+  const pctFull = (n) => `${(n*100).toFixed(2)}%`;
   let reason;
-  if (Math.abs(top.success - runner.success) > 0.005) {
-    reason = `<strong>higher survival rate</strong> than the next-best <em>${runnerName}</em> (${fmtPct(top.success)} vs ${fmtPct(runner.success)})`;
+  if (Math.abs(top.success - runner.success) > 0.0001) {
+    reason = `<strong>higher survival rate</strong> than the next-best <em>${runnerName}</em> (${pctFull(top.success)} vs ${pctFull(runner.success)})`;
   } else if (top.p10 - runner.p10 > 1000) {
     reason = `same survival rate as <em>${runnerName}</em>, but a <strong>stronger bad-case floor</strong> (P10 ${fmtMoney(top.p10)} vs ${fmtMoney(runner.p10)})`;
   } else if (runner.median_tax - top.median_tax > 1000) {
@@ -452,7 +455,10 @@ function renderHeatmap(combos, opts, topKey) {
       const top = key === topKey ? ' top' : '';
       const cell = document.createElement('div');
       cell.className = `hm-cell ${cls}${sel}${top}`;
-      cell.innerHTML = `<span class="hm-v">${(c.success*100).toFixed(1)}%</span><span class="hm-s">P10 ${fmtMoney(c.p10)}</span>`;
+      // Display success to 2 decimals so 97.06% vs 97.14% is visually
+      // distinguishable. With only 1 decimal, multiple combos look identical
+      // when they actually differ at the ranking tiebreakers.
+      cell.innerHTML = `<span class="hm-v">${(c.success*100).toFixed(2)}%</span><span class="hm-s">P10 ${fmtMoney(c.p10)}</span>`;
       // Rich tooltip explaining BOTH strategies + the metrics for this combo.
       // The data-tooltip attribute is set as a marker so the global listener
       // fires; the actual HTML lives in __tooltipHTML to avoid attribute-length
@@ -659,7 +665,7 @@ function renderAllocTable(combos, opts, topKey) {
     tr.className = `${sel}${isTop}`.trim();
     tr.innerHTML = `
       <td>${allocLabel(r.alloc)}</td>
-      <td><span class="pill ${cls}">${fmtPct(r.success)}</span></td>
+      <td><span class="pill ${cls}">${(r.success*100).toFixed(2)}%</span></td>
       <td>${fmtMoney(r.p10)}</td>
       <td>${fmtMoney(r.p50)}</td>
       <td>${fmtMoney(r.p90)}</td>
@@ -696,7 +702,7 @@ function renderWDTable(combos, opts, topKey) {
     tr.className = `${sel}${isTop}`.trim();
     tr.innerHTML = `
       <td>${wdLabel(r.wd)}</td>
-      <td><span class="pill ${cls}">${fmtPct(r.success)}</span></td>
+      <td><span class="pill ${cls}">${(r.success*100).toFixed(2)}%</span></td>
       <td>${fmtMoney(r.p10)}</td>
       <td>${fmtMoney(r.p50)}</td>
       <td>${fmtMoney(r.p90)}</td>
