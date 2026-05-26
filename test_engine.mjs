@@ -208,3 +208,38 @@ r = runSim({ ...DEFAULTS, spending: 200000 });
 ranked = rank(r.combos);
 console.log(`  Winner: ${ranked[0].key} (success=${fmtPct(ranked[0].success)}, P10=${fmtMoney(ranked[0].p10)}, tax=${fmtMoney(ranked[0].median_tax)})`);
 console.log(`  Why: ${explainTie(ranked[0], ranked[1])}`);
+
+console.log('\n=== Test 9: Already-retired client (age_now > age_ret) ===');
+// 70-year-old, "retired at 65", planning to 95. Should simulate immediate
+// retirement (no accumulation phase) and depletion math throughout.
+const alreadyRetired = {
+  ...DEFAULTS,
+  age_now: 70, age_ret: 65, age_end: 95,
+  taxable: 500000, traditional: 600000, roth: 200000, cost_basis: 250000,
+  savings: 0,        // not saving, fully retired
+  spending: 60000,
+  ss_age: 65,        // SS already started
+  ss_amt: 25000,
+};
+r = runSim(alreadyRetired);
+const arResult = r.combos['EqualWeight_TradFirst'];
+console.log('Already-retired EqualWeight/TradFirst:', {
+  success: arResult.success,
+  p10: Math.round(arResult.p10),
+  p50: Math.round(arResult.p50),
+  p90: Math.round(arResult.p90),
+});
+console.log('All 30 combos have valid (finite, non-NaN) numbers:',
+  Object.values(r.combos).every(c => Number.isFinite(c.p50) && Number.isFinite(c.success)));
+
+// Also test the edge: age_ret way in the past
+const longRetired = {
+  ...alreadyRetired,
+  age_now: 85, age_ret: 60, age_end: 105,
+};
+r = runSim(longRetired);
+const lrResult = r.combos['EqualWeight_TradFirst'];
+console.log('Long-retired (85 / retired at 60):', {
+  success: lrResult.success,
+  p50: Math.round(lrResult.p50),
+});

@@ -167,13 +167,14 @@ function validateInputs() {
       missing.push(id);
     }
   }
-  // Sanity: ages must be ordered (only check if all present)
-  const an = +$('age_now').value, ar = +$('age_ret').value, ae = +$('age_end').value;
-  if (Number.isFinite(an) && Number.isFinite(ar) && $('age_now').value !== '' && $('age_ret').value !== '' && ar < an) {
-    missing.push('age_ret must be ≥ age_now');
-  }
-  if (Number.isFinite(ar) && Number.isFinite(ae) && $('age_ret').value !== '' && $('age_end').value !== '' && ae < ar) {
-    missing.push('age_end must be ≥ age_ret');
+  // Sanity on ages. Retirement age can be BEFORE current age (already-retired
+  // clients) — the engine treats `age >= age_ret` as retired, so this works
+  // naturally. The only hard requirement is that the plan must end at or
+  // after the client's current age, otherwise there are no years to simulate.
+  const an = +$('age_now').value, ae = +$('age_end').value;
+  if ($('age_now').value !== '' && $('age_end').value !== '' &&
+      Number.isFinite(an) && Number.isFinite(ae) && ae < an) {
+    missing.push('age_end must be ≥ age_now (plan can\'t end in the past)');
   }
   return missing;
 }
