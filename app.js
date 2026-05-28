@@ -593,7 +593,7 @@ function renderHist(fd) {
         tooltip: {
           backgroundColor: '#181818', titleFont: { family: 'system-ui' }, bodyFont: { family: 'system-ui' },
           callbacks: {
-            title: (it) => `At least ${it[0].label}`,
+            title: (it) => `${it[0].label} to ${fmtMoney((it[0].dataIndex + 1) * w)}`,
             label: (it) => `${it.parsed.y} paths`
           }
         }
@@ -813,9 +813,7 @@ function capCostBasis() {
   if (cb > tx) $('cost_basis').value = tx;
   if (cb < 0) $('cost_basis').value = 0;
 }
-$('taxable').addEventListener('input', capCostBasis);
-$('cost_basis').addEventListener('input', capCostBasis);
-$('cost_basis').addEventListener('blur', capCostBasis);
+$('taxable').addEventListener('blur', capCostBasis);
 
 // ---------- Custom tooltip system ----------
 // Replaces native title= attributes which have a 1-second delay and don't
